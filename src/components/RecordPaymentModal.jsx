@@ -1,7 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
-import { X, Zap, MessageCircle } from 'lucide-react';
+import { Zap, MessageCircle, Check, Wallet } from 'lucide-react';
 import ReceiptModal from './ReceiptModal';
+import BottomSheet from './ui/BottomSheet';
 import { supabase } from '../lib/supabase';
 import {
   calculateRentCharge,
@@ -27,7 +27,6 @@ export default function RecordPaymentModal({
   const [paymentDate, setPaymentDate] = useState(
     new Date().toLocaleDateString('en-CA')
   );
-  // The rent period being settled is independent of the date money is received.
   const [rentMonth, setRentMonth] = useState(
     new Date().toLocaleDateString('en-CA').slice(0, 7)
   );
@@ -35,11 +34,11 @@ export default function RecordPaymentModal({
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [showDetails, setShowDetails] = useState(false);
 
   const moveInDate = tenant?.moveInDate || tenant?.move_in_date || tenant?.startDate || '';
   const monthlyRent = Number(tenant?.rent ?? tenant?.monthly_rent ?? 0);
 
-  // When rentMonth changes, compute the charge and period
   const periodInfo = React.useMemo(() => {
     return calculatePeriodRange(moveInDate, rentMonth);
   }, [moveInDate, rentMonth]);
@@ -64,19 +63,17 @@ export default function RecordPaymentModal({
     setGeneratedReceipt(null);
     setIsReceiptOpen(false);
     setSaveError('');
+    setShowDetails(false);
 
-    // Determine default rent month
     let initialMonth = preselectedMonth;
     if (!initialMonth) {
       const currentMonth = today.slice(0, 7);
-      // Fixed post-paid default: previous month
       const defaultMonth = getPrevMonthKey(currentMonth);
       const moveInMonth = moveInDate ? moveInDate.slice(0, 7) : '';
       initialMonth = (moveInMonth && moveInMonth > defaultMonth) ? moveInMonth : defaultMonth;
     }
     setRentMonth(initialMonth);
 
-    // Initial amount
     if (preselectedAmount != null) {
       setAmount(String(preselectedAmount));
     } else {
@@ -88,7 +85,6 @@ export default function RecordPaymentModal({
       setAmount(String(charge));
     }
 
-    // Electricity readings
     const databaseReading =
       tenant.last_electricity_reading ??
       tenant.lastElectricityReading;
@@ -114,7 +110,6 @@ export default function RecordPaymentModal({
     }
   }, [tenant, isOpen, preselectedMonth, preselectedAmount, monthlyRent, moveInDate]);
 
-  // When user changes rentMonth (not via preselected props), update amount to match the target charge
   const handleRentMonthChange = (newMonth) => {
     setRentMonth(newMonth);
     const charge = calculateRentCharge({
@@ -128,7 +123,6 @@ export default function RecordPaymentModal({
   if (!isOpen || !tenant) return null;
 
   let landlordProfile = {};
-
   try {
     landlordProfile = JSON.parse(
       localStorage.getItem('landlordProfile') || '{}'
@@ -147,9 +141,9 @@ export default function RecordPaymentModal({
 
   const displayMonth = rentMonth
     ? new Date(`${rentMonth}-01T12:00:00`).toLocaleString('en-US', {
-        month: 'long',
-        year: 'numeric',
-      })
+      month: 'long',
+      year: 'numeric',
+    })
     : '';
 
   const handleSendWhatsAppReminder = () => {
@@ -159,10 +153,6 @@ export default function RecordPaymentModal({
       alert('Tenant phone number is not available.');
       return;
     }
-
-    const rentVal = Number(amount) || 0;
-    const lightBill = consumedUnits > 0 ? consumedUnits * rate : (Number(electricityAmount) || 0);
-    const grandTotal = rentVal + lightBill;
 
     const message =
       `*RENT DUE REMINDER* 🔔\n` +
@@ -244,11 +234,8 @@ export default function RecordPaymentModal({
         );
       }
 
-      // payment_month represents the rent period being settled, not payment_date.
       const monthDate = `${rentMonth}-01`;
-
       const receiptNumber = `RP-${Date.now()}`;
-
       const finalDescription = description.trim() || `Rent payment for ${displayMonth} (${periodInfo.range})`;
 
       const { data: result, error: paymentError } = await supabase.rpc(
@@ -277,7 +264,6 @@ export default function RecordPaymentModal({
         throw new Error('The payment was not confirmed by the database.');
       }
 
-      // Update the tenant's last electricity reading.
       if (currUnits !== '') {
         const { error: readingError } = await supabase
           .from('tenants')
@@ -300,7 +286,6 @@ export default function RecordPaymentModal({
         `${paymentDate}T12:00:00`
       ).toLocaleDateString('en-GB');
 
-      // Keep the receipt field names compatible with ReceiptModal.jsx.
       const newReceipt = {
         id: savedPayment.id,
         receiptNumber: savedPayment.receipt_number,
@@ -328,8 +313,6 @@ export default function RecordPaymentModal({
         createdAt: savedPayment.created_at,
       };
 
-      // Preserve old browser receipts and add this receipt for backward
-      // compatibility. Supabase remains the authoritative payment store.
       try {
         const savedReceipts = JSON.parse(
           localStorage.getItem('app_receipts') || '[]'
@@ -350,278 +333,252 @@ export default function RecordPaymentModal({
       console.error('Error recording payment:', error);
       setSaveError(
         error?.message ||
-          'Unable to save the payment. Please try again.'
+        'Unable to save the payment. Please try again.'
       );
     } finally {
       setIsSaving(false);
     }
   };
 
+  const paymentModes = [
+    { id: 'UPI', label: 'UPI / GPay' },
+    { id: 'Cash', label: 'Cash' },
+    { id: 'Bank Transfer', label: 'Bank' },
+    { id: 'Cheque', label: 'Cheque' },
+  ];
+
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm animate-in fade-in">
-        <div className="bg-white w-full max-w-md rounded-[28px] p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-            <div>
-              <h2 className="text-base font-black text-slate-900">
-                Record Rent Payment
-              </h2>
-              <p className="text-xs text-slate-400 font-semibold">
-                {tenant.name || tenant.full_name} •{' '}
-                {tenant.unit || tenant.unit_label}
-              </p>
+      <BottomSheet
+        isOpen={isOpen && !isReceiptOpen}
+        onClose={onClose}
+        title="Collect Rent"
+        subtitle={`${tenant.name || tenant.full_name} • ${tenant.unit || tenant.unit_label}`}
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Big Amount Header Card */}
+          <div className="rounded-card p-5 glass-panel-strong border border-white/90 dark:border-white/10 text-center relative overflow-hidden">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-muted dark:text-[#98a3c4]">
+              Total Payable ({displayMonth})
+            </span>
+            <div className="text-4xl font-black text-ink dark:text-white tracking-tight mt-1">
+              ₹{grandTotal.toLocaleString('en-IN')}
             </div>
 
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSaving}
-              className="p-1 text-slate-400 hover:text-slate-700 rounded-full disabled:opacity-50"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <div className="flex items-center justify-center gap-3 text-xs font-semibold text-muted dark:text-[#98a3c4] mt-2">
+              <span>Rent: ₹{rentVal.toLocaleString('en-IN')}</span>
+              {lightBill > 0 && (
+                <span className="text-amber font-bold">
+                  • Electricity: ₹{lightBill.toLocaleString('en-IN')}
+                </span>
+              )}
+            </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4 text-xs font-semibold">
-            <div>
-              <label className="block text-slate-600 mb-1">
-                Rent Amount (₹) *
-              </label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                required
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-900 focus:outline-none focus:border-[#1e3a5f]"
-              />
+          {/* Payment Mode Chips */}
+          <div>
+            <label className="block text-[11px] font-extrabold uppercase tracking-wider text-muted dark:text-[#98a3c4] mb-1.5">
+              Payment Method
+            </label>
+            <div className="grid grid-cols-4 gap-2">
+              {paymentModes.map((mode) => {
+                const isSelected = paymentMode === mode.id;
+                return (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    onClick={() => setPaymentMode(mode.id)}
+                    className={`py-2 px-1 rounded-btn text-xs font-extrabold transition-all duration-150 flex items-center justify-center gap-1 active:scale-95 cursor-pointer select-none ${isSelected
+                        ? 'bg-gradient-to-br from-primary to-primary2 text-white shadow-md shadow-primary/30 border border-white/20'
+                        : 'glass-panel text-muted dark:text-[#94a3b8] hover:text-ink dark:hover:text-white'
+                      }`}
+                  >
+                    {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                    <span className="truncate">{mode.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Rent Amount Input */}
+          <div>
+            <label className="block text-xs font-bold text-ink dark:text-white mb-1">
+              Rent Amount (₹)
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              required
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="w-full px-4 py-3 rounded-[16px] glass-panel-strong border border-white/90 dark:border-white/10 text-base font-extrabold text-ink dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 transition"
+            />
+          </div>
+
+          {/* Collapsible Electricity / Sub-meter Charges */}
+          <div className="rounded-tile p-3.5 glass-panel border border-white/80 dark:border-white/10 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-extrabold text-ink dark:text-white flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-amber fill-amber" />
+                Electricity Sub-meter
+              </span>
+              <span className="text-[10px] text-muted dark:text-[#98a3c4] font-bold">
+                Units: <strong className="text-ink dark:text-white font-black">{consumedUnits}</strong>
+              </span>
             </div>
 
-            <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
-                  <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-                  Electricity Charges (Sub-meter)
-                </span>
-                <span className="text-[10px] text-slate-500 font-bold">
-                  Units Consumed:{' '}
-                  <strong className="text-[#1e3a5f] font-black">
-                    {consumedUnits}
-                  </strong>
-                </span>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="block text-[10px] text-slate-500 font-bold mb-0.5">
-                    Previous Reading
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="0"
-                    value={prevUnits}
-                    onChange={(e) => setPrevUnits(e.target.value)}
-                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1e3a5f]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] text-slate-500 font-bold mb-0.5">
-                    Current Reading
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="0"
-                    value={currUnits}
-                    onChange={(e) => setCurrUnits(e.target.value)}
-                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1e3a5f]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] text-slate-500 font-bold mb-0.5">
-                    Rate / Unit (₹)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={unitRate}
-                    onChange={(e) => setUnitRate(e.target.value)}
-                    className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1e3a5f]"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-1 border-t border-slate-200/80">
-                <span className="text-[11px] text-slate-500">
-                  {consumedUnits > 0
-                    ? `(${consumedUnits} units × ₹${rate})`
-                    : 'Electricity Total:'}
-                </span>
-                <span className="text-xs font-black text-amber-600">
-                  ₹{lightBill.toLocaleString()}
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-slate-600 mb-1">Description / Notes</label>
-              <textarea
-                rows={2}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="e.g. October rent paid by UPI"
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1e3a5f] resize-y"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-2">
               <div>
-                <label className="block text-slate-600 mb-1">
-                  Payment Date *
+                <label className="block text-[10px] text-muted font-bold mb-0.5">
+                  Prev Unit
                 </label>
                 <input
-                  type="date"
-                  required
-                  value={paymentDate}
-                  onChange={(e) => setPaymentDate(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1e3a5f]"
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  value={prevUnits}
+                  onChange={(e) => setPrevUnits(e.target.value)}
+                  className="w-full px-2.5 py-2 rounded-btn glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-bold text-ink dark:text-white focus:outline-none focus:ring-1 focus:ring-primary"
                 />
-                <p className="text-[10px] text-slate-500 font-medium mt-1">
-                  Date money was received
-                </p>
               </div>
 
               <div>
-                <label className="block text-slate-600 mb-1">
-                  Rent Month Being Paid *
+                <label className="block text-[10px] text-muted font-bold mb-0.5">
+                  Current Unit
                 </label>
                 <input
-                  type="month"
-                  required
-                  value={rentMonth}
-                  onChange={(e) => handleRentMonthChange(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1e3a5f]"
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  value={currUnits}
+                  onChange={(e) => setCurrUnits(e.target.value)}
+                  className="w-full px-2.5 py-2 rounded-btn glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-bold text-ink dark:text-white focus:outline-none focus:ring-1 focus:ring-primary"
                 />
-                <div className="mt-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-extrabold text-slate-800">
-                      Applies to: {displayMonth}
-                    </span>
-                    <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-md bg-blue-100 text-blue-800">
-                      Post-Paid (Previous Month)
-                    </span>
-                  </div>
-
-                  <p className="text-[11px] text-slate-600">
-                    Period: <strong className="text-slate-900">{periodInfo.range}</strong>
-                  </p>
-
-                  <div className="pt-1 border-t border-slate-200/80 flex items-center justify-between text-[11px]">
-                    <span className="text-slate-500 font-semibold">
-                      {periodInfo.isProrated ? `Prorated Rent (${periodInfo.eligibleDays}/${periodInfo.totalDays} days):` : 'Full Monthly Rent:'}
-                    </span>
-                    <strong className="text-[#1e3a5f] font-black">
-                      ₹{targetChargeAmount.toLocaleString('en-IN')}
-                    </strong>
-                  </div>
-
-                  <p className="text-[10px] text-slate-500 font-medium leading-tight">
-                    💡 Landlord collects rent for {displayMonth} after the month completes.
-                  </p>
-                </div>
               </div>
-            </div>
 
-            <div>
-                <label className="block text-slate-600 mb-1">
-                  Payment Mode
-                </label>
-                <select
-                  value={paymentMode}
-                  onChange={(e) => setPaymentMode(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1e3a5f]"
-                >
-                  <option value="UPI">Google Pay / UPI</option>
-                  <option value="Cash">Cash</option>
-                  <option value="Bank Transfer">Bank Transfer</option>
-                  <option value="Cheque">Cheque</option>
-                  <option value="Other">Other</option>
-                </select>
-            </div>
-
-            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
               <div>
-                <span className="text-[10px] text-slate-400 block uppercase tracking-wider font-bold">
-                  Total Received
-                </span>
-                <span className="text-xl font-black text-emerald-600">
-                  ₹{grandTotal.toLocaleString()}
-                </span>
-              </div>
-              <div className="text-right text-[11px] text-slate-500 font-medium space-y-0.5">
-                <p>Rent: <strong className="text-slate-800">₹{rentVal.toLocaleString()}</strong></p>
-                {lightBill > 0 && (
-                  <p className="text-amber-600 font-bold">
-                    Light: ₹{lightBill.toLocaleString()}
-                  </p>
-                )}
+                <label className="block text-[10px] text-muted font-bold mb-0.5">
+                  Rate / Unit (₹)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={unitRate}
+                  onChange={(e) => setUnitRate(e.target.value)}
+                  className="w-full px-2.5 py-2 rounded-btn glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-bold text-ink dark:text-white focus:outline-none focus:ring-1 focus:ring-primary"
+                />
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={handleSendWhatsAppReminder}
-              className="w-full py-2.5 px-3 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition active:scale-[0.99]"
-            >
-              <MessageCircle className="w-4 h-4 text-emerald-600" />
-              <span>Send Due Reminder on WhatsApp</span>
-            </button>
-
-            {saveError && (
-              <div
-                role="alert"
-                className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs"
-              >
-                {saveError}
+            {consumedUnits > 0 && (
+              <div className="flex items-center justify-between pt-1 border-t border-white/60 dark:border-white/10 text-xs">
+                <span className="text-muted font-medium">
+                  {consumedUnits} units × ₹{rate}
+                </span>
+                <span className="font-extrabold text-amber">
+                  +₹{lightBill.toLocaleString('en-IN')}
+                </span>
               </div>
             )}
+          </div>
 
-            <div className="pt-2 flex gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={isSaving}
-                className="w-1/2 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition disabled:opacity-50"
-              >
-                Cancel
-              </button>
+          {/* Toggle More Details (Dates, Notes) */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowDetails(!showDetails)}
+              className="text-xs font-bold text-primary dark:text-[#8d99ff] hover:underline cursor-pointer"
+            >
+              {showDetails ? '− Hide payment dates & notes' : '+ Edit payment dates & notes'}
+            </button>
 
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="w-1/2 py-3 bg-[#1e3a5f] hover:bg-[#162b47] text-white rounded-xl font-bold transition shadow-md shadow-[#1e3a5f]/20 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {isSaving ? 'Saving Payment...' : 'Record & Generate Receipt'}
-              </button>
+            {showDetails && (
+              <div className="mt-2 space-y-3 p-3.5 rounded-tile glass-panel border border-white/60 dark:border-white/10 animate-fade-up">
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-[11px] font-bold text-muted mb-1">
+                      Payment Date
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={paymentDate}
+                      onChange={(e) => setPaymentDate(e.target.value)}
+                      className="w-full px-2.5 py-2 rounded-btn glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-bold text-ink dark:text-white focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-muted mb-1">
+                      Rent Month
+                    </label>
+                    <input
+                      type="month"
+                      required
+                      value={rentMonth}
+                      onChange={(e) => handleRentMonthChange(e.target.value)}
+                      className="w-full px-2.5 py-2 rounded-btn glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-bold text-ink dark:text-white focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-muted mb-1">
+                    Notes / Description
+                  </label>
+                  <input
+                    type="text"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="e.g. October rent settled via UPI"
+                    className="w-full px-3 py-2 rounded-btn glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-semibold text-ink dark:text-white focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Send Reminder on WhatsApp */}
+          <button
+            type="button"
+            onClick={handleSendWhatsAppReminder}
+            className="w-full py-2.5 px-3 rounded-btn glass-panel border border-teal/30 text-teal hover:bg-teal/15 font-extrabold text-xs flex items-center justify-center gap-2 transition active:scale-95 cursor-pointer"
+          >
+            <MessageCircle className="w-4 h-4 stroke-[2]" />
+            <span>Send Due Reminder on WhatsApp</span>
+          </button>
+
+          {saveError && (
+            <div className="p-3 rounded-btn bg-rose/15 border border-rose/30 text-rose text-xs font-bold">
+              {saveError}
             </div>
-          </form>
-        </div>
-      </div>
+          )}
 
+          {/* Full-width Gradient "Mark as Paid" Button */}
+          <button
+            type="submit"
+            disabled={isSaving}
+            className="w-full py-3.5 px-4 rounded-btn bg-gradient-to-br from-primary to-primary2 text-white font-extrabold text-sm shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/40 active:scale-95 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer border border-white/20"
+          >
+            <Wallet className="w-4 h-4 stroke-[2.5]" />
+            <span>{isSaving ? 'Processing Payment...' : 'Mark as Paid & Generate Receipt'}</span>
+          </button>
+        </form>
+      </BottomSheet>
+
+      {/* Generated Receipt Modal */}
       <ReceiptModal
-  isOpen={isReceiptOpen}
-  receipt={generatedReceipt}
-  landlordProfile={landlordProfile}
-  onClose={() => {
-    setIsReceiptOpen(false);
-    onClose();
-  }}
-/>
+        isOpen={isReceiptOpen}
+        receipt={generatedReceipt}
+        landlordProfile={landlordProfile}
+        onClose={() => {
+          setIsReceiptOpen(false);
+          onClose();
+        }}
+      />
     </>
   );
 }

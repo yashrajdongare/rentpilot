@@ -1,6 +1,6 @@
-
 import React, { useState } from 'react';
-import { X, Building2, MapPin, Info } from 'lucide-react';
+import { MapPin, Info, Plus } from 'lucide-react';
+import BottomSheet from './ui/BottomSheet';
 
 export default function AddPropertyModal({
   isOpen,
@@ -38,7 +38,7 @@ export default function AddPropertyModal({
         name: name.trim(),
         address: address.trim(),
         type,
-        rent: 0, // Rent is defined individually per tenant/room type
+        rent: 0,
         rentCollectionMode: 'POST_PAID',
         rentCalculationMethod: 'FIXED',
         dueDay: dayNum,
@@ -58,156 +58,123 @@ export default function AddPropertyModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white p-5">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-blue-50 p-2">
-              <Building2 className="h-5 w-5 text-blue-600" />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">
-                Add Property
-              </h2>
-              <p className="text-sm text-gray-500">
-                Enter your property details
-              </p>
-            </div>
-          </div>
+    <BottomSheet
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Add Property"
+      subtitle="Enter your property details"
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Property Name */}
+        <div>
+          <label className="block text-xs font-bold text-ink dark:text-white mb-1">
+            Property Name *
+          </label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Shree Apartment / Galaxy Flats"
+            required
+            className="w-full px-3.5 py-2.5 rounded-[16px] glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-semibold text-ink dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 transition"
+          />
+        </div>
 
+        {/* Address */}
+        <div>
+          <label className="flex items-center gap-1.5 text-xs font-bold text-ink dark:text-white mb-1">
+            <MapPin className="w-3.5 h-3.5 text-primary stroke-[2]" />
+            Property Address
+          </label>
+          <textarea
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            placeholder="Enter street, area, city, or address..."
+            rows={2}
+            className="w-full px-3.5 py-2.5 rounded-[16px] glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-semibold text-ink dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 transition resize-y"
+          />
+        </div>
+
+        {/* Property Type */}
+        <div>
+          <label className="block text-xs font-bold text-ink dark:text-white mb-1">
+            Property Type *
+          </label>
+          <select
+            value={type}
+            onChange={(e) => setType(e.target.value)}
+            className="w-full px-3.5 py-2.5 rounded-[16px] glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-semibold text-ink dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 transition"
+          >
+            <option value="Residential Flat / Apartment">Residential Flat / Apartment</option>
+            <option value="Independent House / Villa">Independent House / Villa</option>
+            <option value="Commercial Shop / Office">Commercial Shop / Office</option>
+            <option value="Hostel / PG Building">Hostel / PG Building</option>
+          </select>
+        </div>
+
+        {/* Due Day */}
+        <div className="flex items-center justify-between p-3.5 rounded-tile glass-panel border border-white/80 dark:border-white/10">
+          <div>
+            <label className="block text-xs font-bold text-ink dark:text-white">
+              Default Rent Due Day
+            </label>
+            <p className="text-[10px] text-muted dark:text-[#98a3c4] font-medium mt-0.5">
+              Rent due date in following month (1–28)
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="number"
+              min="1"
+              max="28"
+              value={dueDay}
+              onChange={(e) => setDueDay(e.target.value)}
+              placeholder="10"
+              required
+              className="w-16 px-2.5 py-1.5 rounded-btn glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-extrabold text-ink dark:text-white text-center focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+            <span className="text-xs text-muted font-bold">th</span>
+          </div>
+        </div>
+
+        {/* Policy note */}
+        <div className="p-3.5 rounded-tile glass-panel bg-primary/5 border border-primary/15 text-xs space-y-2">
+          <div className="flex items-center gap-1.5">
+            <Info className="w-4 h-4 text-primary shrink-0 stroke-[2]" />
+            <span className="font-extrabold text-ink dark:text-white text-xs">
+              Billing Model (Fixed Post-Paid)
+            </span>
+          </div>
+          <p className="text-[11px] text-muted dark:text-[#98a3c4] leading-relaxed">
+            Rent is tracked after the rental month completes. First month is prorated from move-in date, then full calendar months.
+          </p>
+        </div>
+
+        {error && (
+          <div className="p-3 rounded-btn bg-rose/15 border border-rose/30 text-rose text-xs font-bold">
+            {error}
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-2.5 pt-2">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
-            aria-label="Close"
+            disabled={isSaving}
+            className="py-3 px-3 rounded-btn glass-panel text-muted hover:text-ink dark:hover:text-white font-bold text-xs active:scale-95 transition disabled:opacity-50 cursor-pointer"
           >
-            <X size={20} />
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSaving}
+            className="py-3 px-3 rounded-btn bg-gradient-to-br from-[#3d4fe0] to-[#6a5cf0] text-white font-extrabold text-xs shadow-md shadow-[#3d4fe0]/25 active:scale-95 transition disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5"
+          >
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+            <span>{isSaving ? 'Saving...' : 'Save Property'}</span>
           </button>
         </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4 p-5">
-          <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700">
-              Property Name *
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Shree Apartment"
-              required
-              className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700">
-              <MapPin size={16} />
-              Property Address
-            </label>
-            <textarea
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="Enter street, area, city, or full address"
-              rows={2}
-              className="w-full resize-y rounded-xl border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium text-gray-700">
-              Property Type *
-            </label>
-            <select
-              value={type}
-              onChange={(e) => setType(e.target.value)}
-              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            >
-              <option>Residential Flat / Apartment</option>
-              <option>Independent House / Villa</option>
-              <option>Commercial Shop / Office</option>
-              <option>Hostel / PG Building</option>
-            </select>
-          </div>
-
-          <div className="flex items-center justify-between p-3.5 rounded-2xl border border-slate-200 bg-slate-50/80">
-            <div>
-              <label className="block text-xs font-bold text-slate-800">
-                Default Rent Due Day
-              </label>
-              <p className="text-[10px] text-slate-500 font-medium mt-0.5">
-                Post-paid rent is due on this day in the following month (1–28)
-              </p>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <input
-                type="number"
-                min="1"
-                max="28"
-                value={dueDay}
-                onChange={(e) => setDueDay(e.target.value)}
-                placeholder="10"
-                required
-                className="w-16 px-2.5 py-1.5 rounded-xl border border-gray-200 bg-white text-xs font-bold text-slate-900 text-center outline-none focus:border-[#1e3a5f]"
-              />
-              <span className="text-xs text-slate-500 font-bold">th</span>
-            </div>
-          </div>
-
-          {/* Explanatory Policy Note */}
-          <div className="p-3.5 bg-blue-50/70 border border-blue-200/80 rounded-2xl text-xs space-y-2.5">
-            <div className="flex items-center gap-2">
-              <Info className="w-4 h-4 text-[#1e3a5f] shrink-0" />
-              <p className="font-bold text-slate-900 text-xs">
-                Billing Model Information
-              </p>
-            </div>
-
-            <div className="space-y-1 pl-6 border-l-2 border-[#1e3a5f]/30">
-              <p className="font-extrabold text-[#1e3a5f] text-[11px] uppercase tracking-wider">
-                Post-Paid
-              </p>
-              <p className="text-[11px] text-slate-700 leading-relaxed font-medium">
-                Choose If you take rent <strong>AFTER</strong> a Month is Completed.<br />
-                <span className="text-slate-500 italic">Eg : Let &apos;Month&apos; is May and you want to receive rent of April</span>
-              </p>
-            </div>
-
-            <div className="space-y-1 pl-6 border-l-2 border-[#1e3a5f]/30">
-              <p className="font-extrabold text-[#1e3a5f] text-[11px] uppercase tracking-wider">
-                Fixed
-              </p>
-              <p className="text-[11px] text-slate-700 leading-relaxed font-medium">
-                First Month Partial Rent Will Be Calculated from <strong>{'{15, Mar to 31, Mar}'}</strong>. After that for Next Month <strong>{'{1, Apr to 30, Apr}'}</strong>. Similarly For Each Consecutive Months.
-              </p>
-            </div>
-          </div>
-
-          {error && (
-            <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600">
-              {error}
-            </p>
-          )}
-
-          <div className="flex gap-3 border-t border-gray-100 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSaving}
-              className="flex-1 rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSaving}
-              className="flex-1 rounded-xl bg-blue-600 px-4 py-3 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isSaving ? 'Saving...' : 'Save Property'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </BottomSheet>
   );
 }

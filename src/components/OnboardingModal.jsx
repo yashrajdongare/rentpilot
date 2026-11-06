@@ -1,22 +1,22 @@
 import React, { useState } from 'react';
-import { Building2, Receipt, ShieldCheck, ArrowRight, Check } from 'lucide-react';
+import { Building2, ReceiptIndianRupee, ShieldCheck, ArrowRight, Check } from 'lucide-react';
 
 const slides = [
   {
     icon: Building2,
-    color: 'bg-blue-500',
+    gradient: 'from-primary to-primary2',
     title: 'प्रॉपर्टी आणि भाडेकरू व्यवस्थापन',
     description: 'तुमचे सर्व फ्लॅट्स, खोल्या, PG किंवा दुकानांची माहिती आणि भाडेकरूंचा संपूर्ण रेकॉर्ड एकाच ठिकाणी ठेवा.',
   },
   {
-    icon: Receipt,
-    color: 'bg-emerald-500',
+    icon: ReceiptIndianRupee,
+    gradient: 'from-teal to-emerald-600',
     title: 'ऑटोमॅटिक भाड्याच्या पावत्या (PDF)',
     description: 'दरमहा आपोआप रेंट रिसीप्ट तयार करा आणि एका क्लिकवर भाडेकरूंना व्हॉट्सअ‍ॅपवर पाठवा किंवा PDF डाऊनलोड करा.',
   },
   {
     icon: ShieldCheck,
-    color: 'bg-indigo-500',
+    gradient: 'from-primary to-indigo-600',
     title: '१००% सुरक्षित आणि प्रायव्हेट',
     description: 'तुमचा सर्व डेटा संपूर्णपणे सुरक्षित राहील. कोणाचे भाडे आले आणि कोणाचे बाकी आहे हे सहज ट्रॅक करा.',
   },
@@ -40,21 +40,22 @@ export default function OnboardingModal({ isOpen, onClose }) {
     onClose();
   };
 
-  const SlideIcon = slides[currentSlide].icon;
+  const current = slides[currentSlide];
+  const SlideIcon = current.icon;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 sm:p-8 flex flex-col justify-between min-h-[460px] animate-in fade-in zoom-in-95 duration-200">
-        
-        {/* Top Header with Skip Button */}
+    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-md flex items-center justify-center p-4">
+      <div className="glass-panel-strong dark:bg-[#1a2244]/80 border border-white/80 dark:border-white/10 rounded-card shadow-glass max-w-md w-full p-6 sm:p-8 flex flex-col justify-between min-h-[460px] animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none">
+
+        {/* Top Header with Step pill and Skip Button */}
         <div className="flex justify-between items-center">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-muted px-2.5 py-1 rounded-full bg-white/60 dark:bg-white/5 border border-white/80 dark:border-white/10">
             Step {currentSlide + 1} of {slides.length}
           </span>
           {currentSlide < slides.length - 1 && (
             <button
               onClick={handleFinish}
-              className="text-sm font-medium text-slate-400 hover:text-slate-600 transition"
+              className="text-xs font-bold text-muted hover:text-ink dark:hover:text-white transition"
             >
               Skip
             </button>
@@ -63,29 +64,28 @@ export default function OnboardingModal({ isOpen, onClose }) {
 
         {/* Center Content (Icon, Title, Description) */}
         <div className="flex flex-col items-center text-center my-6">
-          <div className={`w-20 h-20 ${slides[currentSlide].color} text-white rounded-3xl flex items-center justify-center shadow-lg mb-6 transition-all duration-300 transform hover:scale-105`}>
-            <SlideIcon className="w-10 h-10" />
+          <div className={`w-20 h-20 bg-gradient-to-tr ${current.gradient} text-white rounded-card flex items-center justify-center shadow-lg shadow-primary/20 mb-6 transition-all duration-300 transform hover:scale-105`}>
+            <SlideIcon className="w-10 h-10 stroke-[2]" />
           </div>
-          
-          <h2 className="text-xl font-bold text-slate-800 mb-3">
-            {slides[currentSlide].title}
+
+          <h2 className="text-xl font-extrabold text-ink dark:text-white mb-2.5 tracking-tight">
+            {current.title}
           </h2>
-          
-          <p className="text-sm text-slate-500 leading-relaxed max-w-xs">
-            {slides[currentSlide].description}
+
+          <p className="text-xs text-muted dark:text-muted/80 leading-relaxed max-w-xs">
+            {current.description}
           </p>
         </div>
 
         {/* Bottom Section: Dots Indicator & Action Button */}
         <div>
           {/* Step Indicator Dots */}
-          <div className="flex justify-center gap-2 mb-6">
+          <div className="flex justify-center items-center gap-2 mb-6">
             {slides.map((_, index) => (
               <div
                 key={index}
-                className={`h-2 rounded-full transition-all duration-300 ${
-                  currentSlide === index ? 'w-8 bg-indigo-600' : 'w-2 bg-slate-200'
-                }`}
+                className={`h-2 rounded-full transition-all duration-300 ${currentSlide === index ? 'w-8 bg-gradient-to-r from-primary to-primary2' : 'w-2 bg-white/80 dark:bg-white/15'
+                  }`}
               />
             ))}
           </div>
@@ -93,17 +93,17 @@ export default function OnboardingModal({ isOpen, onClose }) {
           {/* Next / Get Started Button */}
           <button
             onClick={handleNext}
-            className="w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-semibold rounded-xl flex items-center justify-center gap-2 shadow-md shadow-indigo-100 transition"
+            className="w-full py-3.5 px-4 bg-gradient-to-r from-primary to-primary2 hover:opacity-95 active:scale-95 text-white font-bold rounded-btn flex items-center justify-center gap-2 shadow-md shadow-primary/25 transition-all text-xs"
           >
             {currentSlide === slides.length - 1 ? (
               <>
                 <span>सुरुवात करा (Get Started)</span>
-                <Check className="w-5 h-5" />
+                <Check className="w-4 h-4 stroke-[2]" />
               </>
             ) : (
               <>
                 <span>पुढे जा (Next)</span>
-                <ArrowRight className="w-5 h-5" />
+                <ArrowRight className="w-4 h-4 stroke-[2]" />
               </>
             )}
           </button>

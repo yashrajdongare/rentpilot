@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Receipt, Search, ChevronRight, ChevronLeft, Calendar } from 'lucide-react';
+import { ReceiptIndianRupee, Search, ChevronRight, Calendar, ArrowUpRight } from 'lucide-react';
 import ReceiptModal from '../components/ReceiptModal';
+import GlassCard from '../components/ui/GlassCard';
+import Avatar from '../components/ui/Avatar';
 import { supabase } from '../lib/supabase';
 import { calculatePeriodRange } from '../utils/billing';
 
-// Helper to get "YYYY-MM" from a date string
 function toMonthKey(dateStr) {
   if (!dateStr) return '';
   return String(dateStr).slice(0, 7);
 }
 
-// Returns "Month YYYY" display label
 function monthLabel(monthKey) {
   if (!monthKey) return '';
   const [y, m] = monthKey.split('-').map(Number);
@@ -18,7 +18,6 @@ function monthLabel(monthKey) {
   return new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
 }
 
-// Generate list of last N months as keys descending
 function getLastNMonths(n = 13) {
   const keys = [];
   const d = new Date();
@@ -34,10 +33,7 @@ export default function Receipts({ profile }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-
-  // Month filter — 'ALL' or a 'YYYY-MM' key
   const [selectedMonth, setSelectedMonth] = useState('ALL');
-  const [showMonthPicker, setShowMonthPicker] = useState(false);
 
   const monthOptions = getLastNMonths(13);
 
@@ -119,7 +115,6 @@ export default function Receipts({ profile }) {
     return () => { cancelled = true; };
   }, []);
 
-  // Apply month filter then text search
   const monthFiltered = selectedMonth === 'ALL'
     ? receipts
     : receipts.filter(r => r.monthKey === selectedMonth);
@@ -139,89 +134,70 @@ export default function Receipts({ profile }) {
   const selectedMonthLabel = selectedMonth === 'ALL' ? 'All Time' : monthLabel(selectedMonth);
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-800 font-sans pb-28">
-      <header className="bg-white/90 backdrop-blur-md border-b border-slate-200/80 px-5 py-3.5 sticky top-0 z-20 flex items-center justify-between">
+    <div className="min-h-screen text-ink dark:text-[#eef1ff] pb-24">
+      {/* Sticky Glass Top Header */}
+      <header className="sticky top-0 z-30 px-5 py-3.5 glass-panel-strong border-b border-white/80 dark:border-white/10 flex items-center justify-between">
         <div>
-          <div className="md:hidden">
-            <h1 className="text-xl font-black tracking-tight text-slate-900 leading-none">
-              Rent <span className="text-[#1e3a5f]">Receipts</span>
-            </h1>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
-              {profile?.businessName || 'Issued Invoices & History'}
-            </p>
-          </div>
-
-          <div className="hidden md:block">
-            <h1 className="text-xl font-black tracking-tight text-slate-900 leading-none">
-              Rent Receipts & Invoices
-            </h1>
-            <p className="text-xs font-semibold text-slate-400 mt-0.5">
-              Manage and print issued tenant receipts
-            </p>
-          </div>
+          <h1 className="text-xl font-black tracking-tight text-ink dark:text-white leading-none">
+            Rent Receipts
+          </h1>
+          <p className="text-[10px] font-bold text-muted dark:text-[#98a3c4] uppercase tracking-wider mt-0.5">
+            {profile?.businessName || 'Issued Invoices & History'}
+          </p>
         </div>
 
-        <span className="px-3 py-1 bg-[#1e3a5f]/10 text-[#1e3a5f] rounded-full text-xs font-bold">
-          {receipts.length} Total Issued
+        <span className="px-3 py-1 bg-primary/10 text-primary dark:text-[#8d99ff] border border-primary/20 rounded-full text-xs font-extrabold">
+          {receipts.length} Issued
         </span>
       </header>
 
-      <main className="p-4 space-y-4 max-w-md md:max-w-4xl mx-auto">
-
-        {/* Hero summary card */}
-        <div className="bg-white rounded-[32px] p-5 border border-slate-200/80 shadow-[0_8px_30px_rgb(0,0,0,0.06)] flex items-center justify-between">
+      <main className="p-4 sm:p-5 space-y-4">
+        {/* Hero Collected Glass Card */}
+        <GlassCard className="animate-fade-up flex items-center justify-between">
           <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+            <p className="text-[11px] font-extrabold uppercase tracking-wider text-muted dark:text-[#98a3c4]">
               {selectedMonth === 'ALL' ? 'Total Collected (All Time)' : `Collected — ${selectedMonthLabel}`}
             </p>
-            <h2 className="text-2xl font-black text-slate-900 mt-0.5">
+            <h2 className="text-3xl font-black text-ink dark:text-white tracking-tight mt-0.5">
               ₹{totalCollectedAmount.toLocaleString('en-IN')}
             </h2>
-            <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+            <p className="text-xs text-muted dark:text-[#98a3c4] font-medium mt-1">
               {monthFiltered.length} receipt{monthFiltered.length !== 1 ? 's' : ''}
             </p>
           </div>
-          <div className="w-11 h-11 rounded-2xl bg-[#1e3a5f]/10 border border-[#1e3a5f]/20 text-[#1e3a5f] flex items-center justify-center font-bold">
-            <Receipt className="w-6 h-6" />
-          </div>
-        </div>
 
-        {/* Month filter bar */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-[#1e3a5f]" />
-              <span className="text-xs font-bold text-slate-700">Filter by Month</span>
-            </div>
-            <button
-              onClick={() => setShowMonthPicker(v => !v)}
-              className="text-[10px] font-bold text-[#1e3a5f] hover:underline"
-            >
-              {showMonthPicker ? 'Hide' : 'Show months'}
-            </button>
+          <div className="w-12 h-12 rounded-tile bg-gradient-to-br from-[#3d4fe0] to-[#6a5cf0] text-white flex items-center justify-center font-bold shadow-glass-sm shrink-0">
+            <ReceiptIndianRupee className="w-6 h-6 stroke-[2]" />
+          </div>
+        </GlassCard>
+
+        {/* Month Filter Chips */}
+        <div className="p-3 rounded-tile glass-panel space-y-2 animate-fade-up">
+          <div className="flex items-center gap-1.5 text-xs font-extrabold text-ink dark:text-white">
+            <Calendar className="w-3.5 h-3.5 text-primary stroke-[2]" />
+            <span>Filter by Month</span>
           </div>
 
-          {/* Scrollable month pills */}
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
             <button
+              type="button"
               onClick={() => setSelectedMonth('ALL')}
-              className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
-                selectedMonth === 'ALL'
-                  ? 'bg-[#1e3a5f] text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
+              className={`shrink-0 px-3 py-1.5 rounded-btn text-xs font-extrabold transition cursor-pointer select-none active:scale-95 ${selectedMonth === 'ALL'
+                ? 'bg-gradient-to-br from-[#3d4fe0] to-[#6a5cf0] text-white shadow-xs'
+                : 'glass-panel text-muted hover:text-ink dark:hover:text-white'
+                }`}
             >
               All Time
             </button>
-            {monthOptions.map(mk => (
+            {monthOptions.map((mk) => (
               <button
                 key={mk}
+                type="button"
                 onClick={() => setSelectedMonth(mk)}
-                className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
-                  selectedMonth === mk
-                    ? 'bg-[#1e3a5f] text-white shadow-sm'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
+                className={`shrink-0 px-3 py-1.5 rounded-btn text-xs font-extrabold transition cursor-pointer select-none active:scale-95 ${selectedMonth === mk
+                  ? 'bg-gradient-to-br from-[#3d4fe0] to-[#6a5cf0] text-white shadow-xs'
+                  : 'glass-panel text-muted hover:text-ink dark:hover:text-white'
+                  }`}
               >
                 {monthLabel(mk)}
               </button>
@@ -230,77 +206,79 @@ export default function Receipts({ profile }) {
         </div>
 
         {/* Search */}
-        <div className="relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+        <div className="relative animate-fade-up">
+          <Search className="w-4 h-4 text-muted absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none stroke-[2]" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by tenant, unit, month or description..."
-            className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200/80 rounded-2xl text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#1e3a5f]"
+            placeholder="Search by tenant, room, month..."
+            className="w-full pl-10 pr-4 py-2.5 rounded-[16px] glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-semibold text-ink dark:text-white placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/40 transition"
           />
         </div>
 
-        {/* Receipts list */}
-        <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs space-y-3">
+        {/* Receipts List */}
+        <GlassCard className="animate-fade-up space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+            <h3 className="text-xs font-black text-ink dark:text-white uppercase tracking-wider">
               {selectedMonth === 'ALL' ? 'All Receipts' : selectedMonthLabel} ({filteredReceipts.length})
             </h3>
-            <span className="text-[10px] font-bold text-slate-400">Tap to view receipt</span>
+            <span className="text-[10px] text-muted font-bold">Tap to view</span>
           </div>
 
           {isLoading ? (
-            <div className="text-center py-8 text-xs font-semibold text-slate-400">Loading receipts…</div>
+            <div className="text-center py-8 text-xs font-semibold text-muted">Loading receipts...</div>
           ) : filteredReceipts.length === 0 ? (
-            <div className="text-center py-8">
-              <Receipt className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-              <p className="text-xs font-bold text-slate-700">
+            <div className="text-center py-10 px-4 rounded-tile glass-panel">
+              <ReceiptIndianRupee className="w-10 h-10 text-muted mx-auto mb-2 stroke-[1.5]" />
+              <p className="text-xs font-extrabold text-ink dark:text-white">
                 {selectedMonth !== 'ALL'
                   ? `No receipts found for ${selectedMonthLabel}.`
                   : 'No receipts found.'}
               </p>
             </div>
           ) : (
-            <div className="space-y-2.5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {filteredReceipts.map((rcpt) => {
                 const totalAmt = Number(rcpt.amount || 0) + Number(rcpt.electricityAmount || 0);
                 return (
                   <div
                     key={rcpt.id}
                     onClick={() => setSelectedReceipt(rcpt)}
-                    className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/60 flex items-center justify-between hover:bg-slate-100/70 transition cursor-pointer active:scale-[0.99]"
+                    className="rounded-tile p-3.5 sm:p-4 glass-panel-strong hover:bg-white dark:hover:bg-[#1c244c] flex items-center justify-between gap-3.5 transition-all duration-200 cursor-pointer active:scale-[0.99] group border border-white/90 dark:border-white/15"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-[#1e3a5f]/10 text-[#1e3a5f] border border-[#1e3a5f]/20 flex items-center justify-center font-bold shrink-0">
-                        <Receipt className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-slate-900">{rcpt.tenantName}</h4>
-                        <p className="text-xs text-slate-500 font-medium mt-0.5">
-                          {rcpt.unit} • <span className="text-[#1e3a5f] font-semibold">{rcpt.month}</span>
+                    {/* Left: Avatar + Tenant Name & Room */}
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <Avatar name={rcpt.tenantName} size="md" className="shrink-0" />
+
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-sm font-extrabold text-ink dark:text-white group-hover:text-primary dark:group-hover:text-[#a5b4fc] transition truncate leading-snug">
+                          {rcpt.tenantName}
+                        </h4>
+                        <p className="text-xs text-muted dark:text-[#94a3b8] font-semibold truncate mt-0.5 leading-snug">
+                          {rcpt.unit ? `${rcpt.unit} • ` : ''}<span className="text-primary dark:text-[#a5b4fc] font-bold">{rcpt.month}</span>
                         </p>
-                        {rcpt.description && (
-                          <p className="text-[11px] text-slate-500 mt-1 max-w-[220px] truncate" title={rcpt.description}>
-                            {rcpt.description}
-                          </p>
-                        )}
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <div className="text-right">
-                        <p className="text-sm font-black text-emerald-600">₹{totalAmt.toLocaleString('en-IN')}</p>
-                        <p className="text-[10px] text-slate-400 font-medium">{rcpt.date}</p>
+                    {/* Right: Symmetrically Aligned Amount, Date & Chevron */}
+                    <div className="flex items-center gap-2.5 text-right shrink-0">
+                      <div>
+                        <p className="text-sm font-black text-teal dark:text-[#2dd4bf] tabular-nums leading-snug">
+                          ₹{totalAmt.toLocaleString('en-IN')}
+                        </p>
+                        <p className="text-[10px] text-muted dark:text-[#94a3b8] font-medium tabular-nums mt-0.5 leading-snug">
+                          {rcpt.date}
+                        </p>
                       </div>
-                      <ChevronRight className="w-4 h-4 text-slate-400" />
+                      <ChevronRight className="w-4 h-4 text-muted group-hover:text-ink dark:group-hover:text-white transition shrink-0" />
                     </div>
                   </div>
                 );
               })}
             </div>
           )}
-        </div>
+        </GlassCard>
       </main>
 
       <ReceiptModal

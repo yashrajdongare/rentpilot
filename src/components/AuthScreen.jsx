@@ -112,44 +112,70 @@ export default function AuthScreen({ onGuestLogin }) {
     }
   };
 
-  const switchMode = () => {
-    setIsSignup(!isSignup);
+  const switchMode = (mode) => {
+    setIsSignup(mode);
     setError('');
     setMessage('');
   };
 
   const inputClass =
-    'w-full py-3 bg-transparent text-xs font-bold text-slate-900 focus:outline-none';
+    'w-full py-2.5 bg-transparent text-xs font-bold text-ink dark:text-white placeholder:text-muted/50 focus:outline-none';
 
   const fieldClass =
-    'flex items-center gap-2 px-3.5 bg-slate-50 border border-slate-200 rounded-xl';
+    'flex items-center gap-2.5 px-3.5 bg-white/80 dark:bg-white/10 border border-white/90 dark:border-white/15 rounded-[16px] focus-within:ring-2 focus-within:ring-primary/40 focus-within:border-primary/50 transition-all';
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-white max-w-md w-full rounded-[32px] p-6 shadow-2xl border border-slate-100 my-auto">
-        <div className="text-center mb-6">
-          <div className="w-12 h-12 bg-[#1e3a5f]/10 text-[#1e3a5f] rounded-2xl flex items-center justify-center mx-auto mb-3">
-            <LockKeyhole className="w-6 h-6" />
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-md p-4 overflow-y-auto">
+      <div className="glass-panel-strong dark:bg-[#121838]/90 border border-white/90 dark:border-white/20 max-w-md w-full rounded-card p-6 sm:p-7 shadow-glass-lg my-auto animate-in fade-in motion-reduce:animate-none">
+
+        {/* Brand Icon & Heading */}
+        <div className="text-center mb-5">
+          <div className="w-12 h-12 rounded-tile bg-gradient-to-tr from-primary to-primary2 text-white flex items-center justify-center mx-auto mb-3 shadow-md shadow-primary/25">
+            <LockKeyhole className="w-5 h-5 stroke-[2]" />
           </div>
 
-          <h2 className="text-xl font-black text-slate-900">
-            Welcome to RentPilot
+          <h2 className="text-xl font-extrabold text-ink dark:text-white tracking-tight">
+            RentPilot
           </h2>
 
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-muted dark:text-muted/80 mt-1">
             {isSignup
-              ? 'Create your landlord account'
-              : 'Log in to manage your properties'}
+              ? 'Create your landlord account to get started'
+              : 'Log in to manage your properties and rent'}
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs font-semibold">
+        {/* Segmented Sign Up / Log In Toggle */}
+        <div className="grid grid-cols-2 p-1 bg-white/60 dark:bg-white/5 border border-white/80 dark:border-white/10 rounded-tile mb-5">
+          <button
+            type="button"
+            onClick={() => switchMode(true)}
+            className={`py-2 text-xs font-bold rounded-[14px] transition-all duration-200 ${isSignup
+                ? 'bg-white dark:bg-white/15 text-primary dark:text-white shadow-sm'
+                : 'text-muted dark:text-muted/70 hover:text-ink dark:hover:text-white'
+              }`}
+          >
+            Create Account
+          </button>
+          <button
+            type="button"
+            onClick={() => switchMode(false)}
+            className={`py-2 text-xs font-bold rounded-[14px] transition-all duration-200 ${!isSignup
+                ? 'bg-white dark:bg-white/15 text-primary dark:text-white shadow-sm'
+                : 'text-muted dark:text-muted/70 hover:text-ink dark:hover:text-white'
+              }`}
+          >
+            Log In
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-3.5 text-xs font-semibold">
           {isSignup && (
             <>
               <div>
-                <label className="block text-slate-600 mb-1">Full Name</label>
+                <label className="block text-ink dark:text-white/80 text-xs font-bold mb-1">Full Name</label>
                 <div className={fieldClass}>
-                  <User className="w-4 h-4 text-slate-400 shrink-0" />
+                  <User className="w-4 h-4 text-muted shrink-0 stroke-[2]" />
                   <input
                     type="text"
                     required
@@ -163,14 +189,14 @@ export default function AuthScreen({ onGuestLogin }) {
               </div>
 
               <div>
-                <label className="block text-slate-600 mb-1">Business Name</label>
+                <label className="block text-ink dark:text-white/80 text-xs font-bold mb-1">Business / Property Name</label>
                 <div className={fieldClass}>
-                  <Building2 className="w-4 h-4 text-slate-400 shrink-0" />
+                  <Building2 className="w-4 h-4 text-muted shrink-0 stroke-[2]" />
                   <input
                     type="text"
                     required
                     autoComplete="organization"
-                    placeholder="Enter your business name"
+                    placeholder="e.g. Skyline Heights"
                     value={businessName}
                     onChange={(e) => setBusinessName(e.target.value)}
                     className={inputClass}
@@ -179,15 +205,15 @@ export default function AuthScreen({ onGuestLogin }) {
               </div>
 
               <div>
-                <label className="block text-slate-600 mb-1">Phone Number</label>
+                <label className="block text-ink dark:text-white/80 text-xs font-bold mb-1">Phone Number</label>
                 <div className={fieldClass}>
-                  <Phone className="w-4 h-4 text-slate-400 shrink-0" />
+                  <Phone className="w-4 h-4 text-muted shrink-0 stroke-[2]" />
                   <input
                     type="tel"
                     required
                     autoComplete="tel"
                     inputMode="tel"
-                    placeholder="Enter your phone number"
+                    placeholder="10-digit mobile number"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     className={inputClass}
@@ -198,9 +224,9 @@ export default function AuthScreen({ onGuestLogin }) {
           )}
 
           <div>
-            <label className="block text-slate-600 mb-1">Email Address</label>
+            <label className="block text-ink dark:text-white/80 text-xs font-bold mb-1">Email Address</label>
             <div className={fieldClass}>
-              <Mail className="w-4 h-4 text-slate-400 shrink-0" />
+              <Mail className="w-4 h-4 text-muted shrink-0 stroke-[2]" />
               <input
                 type="email"
                 required
@@ -214,9 +240,9 @@ export default function AuthScreen({ onGuestLogin }) {
           </div>
 
           <div>
-            <label className="block text-slate-600 mb-1">Password</label>
+            <label className="block text-ink dark:text-white/80 text-xs font-bold mb-1">Password</label>
             <div className={fieldClass}>
-              <LockKeyhole className="w-4 h-4 text-slate-400 shrink-0" />
+              <LockKeyhole className="w-4 h-4 text-muted shrink-0 stroke-[2]" />
               <input
                 type="password"
                 required
@@ -231,21 +257,21 @@ export default function AuthScreen({ onGuestLogin }) {
           </div>
 
           {error && (
-            <p role="alert" className="text-red-600 text-xs break-words">
+            <div role="alert" className="p-3 rounded-tile bg-rose/10 border border-rose/20 text-rose text-xs font-medium break-words">
               {error}
-            </p>
+            </div>
           )}
 
           {message && (
-            <p role="status" className="text-emerald-700 text-xs break-words">
+            <div role="status" className="p-3 rounded-tile bg-teal/10 border border-teal/20 text-teal text-xs font-medium break-words">
               {message}
-            </p>
+            </div>
           )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3.5 bg-[#1e3a5f] hover:bg-[#162b47] disabled:opacity-60 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-md transition"
+            className="w-full py-3.5 bg-gradient-to-r from-primary to-primary2 hover:opacity-95 disabled:opacity-60 text-white font-bold rounded-btn flex items-center justify-center gap-2 shadow-md shadow-primary/25 active:scale-95 transition-all mt-2"
           >
             <span>
               {loading
@@ -254,15 +280,17 @@ export default function AuthScreen({ onGuestLogin }) {
                   ? 'Create Account'
                   : 'Log In'}
             </span>
-            {!loading && <ArrowRight className="w-4 h-4" />}
+            {!loading && <ArrowRight className="w-4 h-4 stroke-[2]" />}
           </button>
 
           <div className="relative my-4">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-200" />
+              <div className="w-full border-t border-white/60 dark:border-white/10" />
             </div>
             <div className="relative flex justify-center text-[10px] uppercase">
-              <span className="bg-white px-2 font-bold text-slate-400">Or explore without sign in</span>
+              <span className="bg-white/80 dark:bg-[#1a2244] px-2.5 py-0.5 rounded-full font-bold text-muted border border-white/60 dark:border-white/10">
+                Or explore without sign in
+              </span>
             </div>
           </div>
 
@@ -270,23 +298,12 @@ export default function AuthScreen({ onGuestLogin }) {
             type="button"
             onClick={handleGuestLogin}
             disabled={loading}
-            className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl flex items-center justify-center gap-2 border border-slate-200 transition text-xs active:scale-95"
+            className="w-full py-3 bg-white/70 dark:bg-white/5 hover:bg-white/90 dark:hover:bg-white/10 text-ink dark:text-white font-bold rounded-btn flex items-center justify-center gap-2 border border-white/80 dark:border-white/10 active:scale-95 transition-all text-xs"
           >
-            <UserCheck className="w-4 h-4 text-[#1e3a5f]" />
+            <UserCheck className="w-4 h-4 text-primary shrink-0 stroke-[2]" />
             <span>Continue as Guest (Demo Mode)</span>
           </button>
         </form>
-
-        <p className="text-center text-xs text-slate-500 mt-5">
-          {isSignup ? 'Already have an account?' : 'New to RentPilot?'}{' '}
-          <button
-            type="button"
-            onClick={switchMode}
-            className="font-bold text-[#1e3a5f] hover:underline"
-          >
-            {isSignup ? 'Log in' : 'Sign up'}
-          </button>
-        </p>
       </div>
     </div>
   );

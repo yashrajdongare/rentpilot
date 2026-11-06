@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
@@ -6,7 +5,7 @@ import {
   Phone,
   DoorOpen,
   Plus,
-  Receipt,
+  ReceiptIndianRupee,
   ChevronRight,
   Edit3,
   MessageCircle,
@@ -21,9 +20,16 @@ import {
   BookOpen,
   Download,
   Upload,
+  Home,
 } from 'lucide-react';
 import RecordPaymentModal from '../components/RecordPaymentModal';
 import ReceiptModal from '../components/ReceiptModal';
+import GlassCard from '../components/ui/GlassCard';
+import StatTile from '../components/ui/StatTile';
+import StatusBadge from '../components/ui/StatusBadge';
+import Avatar from '../components/ui/Avatar';
+import SegmentedTabs from '../components/ui/SegmentedTabs';
+import BottomSheet from '../components/ui/BottomSheet';
 import { supabase } from '../lib/supabase';
 import {
   calculateRentCharge,
@@ -47,9 +53,7 @@ export default function TenantDetails() {
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  // Which tab is active in the lower section: 'LEDGER' | 'HISTORY'
   const [activeDetailTab, setActiveDetailTab] = useState('LEDGER');
-  // For pre-selecting month when opening payment modal from ledger
   const [preselectedMonth, setPreselectedMonth] = useState(null);
   const [preselectedAmount, setPreselectedAmount] = useState(null);
   const [aadhaarDocument, setAadhaarDocument] = useState(null);
@@ -65,10 +69,10 @@ export default function TenantDetails() {
     deposit: '',
     idProof: '',
     agreementExpiry: '',
+    dueDay: 10,
   });
 
   let landlordProfile = {};
-
   try {
     landlordProfile = JSON.parse(
       localStorage.getItem('landlordProfile') || '{}'
@@ -77,25 +81,22 @@ export default function TenantDetails() {
     landlordProfile = {};
   }
 
-  const loadTenant = React.useCallback(async (showSpinner = true) => {
+  const loadTenant = React.useCallback(async (showSpinner = false) => {
     if (showSpinner) setIsLoading(true);
     setLoadError('');
 
     try {
       const {
-        data: authData,
+        data: { user },
         error: authError,
       } = await supabase.auth.getUser();
 
       if (authError) throw authError;
 
-      const user = authData?.user;
-
       if (!user) {
         throw new Error('Please sign in to view tenant details.');
       }
 
-      // Load the tenant belonging to the signed-in owner.
       const { data, error } = await supabase
         .from('tenants')
         .select(
@@ -108,9 +109,47 @@ export default function TenantDetails() {
       if (error) throw error;
 
       if (!data) {
-        throw new Error(
-          'Tenant not found or you do not have access.'
-        );
+        throw new Error('Tenant not found or you do not have permission to view them.');
+      }
+
+      let propertyName = 'Property';
+
+      if (data.property_id) {
+        const { data: propertyData } = await supabase
+          .from('properties')
+          .select('name')
+          .eq('id', data.property_id)
+          .eq('owner_id', user.id)
+          .maybeSingle();
+
+        if (propertyData?.name) {
+          propertyName = propertyData.name;
+        }
+      }
+
+      const { data: paymentRows, error: paymentError } = await supabase
+        .from('payments')
+        .select(
+          'id, tenant_id, payment_date, payment_month, rent_amount, electricity_amount, total_amount, payment_method, electricity_previous_reading, electricity_new_reading, electricity_units, electricity_unit_rate, receipt_number, description, created_at'
+        )
+        .eq('tenant_id', id)
+        .eq('owner_id', user.id)
+        .order('payment_date', { ascending: false });
+
+      if (paymentError) throw paymentError;
+
+      try {
+        const { data: docRows } = await supabase
+          .from('tenant_documents')
+          .select('*')
+          .eq('tenant_id', id)
+          .eq('owner_id', user.id)
+          .order('created_at', { ascending: false });
+        if (docRows && docRows.length > 0) {
+          setAadhaarDocument(docRows[0]);
+        }
+      } catch (docErr) {
+        console.warn('Could not load tenant documents:', docErr);
       }
 
       let parsedNotes = {};
@@ -119,172 +158,85 @@ export default function TenantDetails() {
       } catch {
         parsedNotes = {};
       }
+      const aadharNum = parsedNotes?.aadhar_number || '';
 
-      // Query tenant_documents
-      const { data: docRows } = await supabase
-        .from('tenant_documents')
-        .select('id, document_type, file_path, file_name, created_at')
-        .eq('tenant_id', id)
-        .eq('owner_id', user.id);
-
-      const aadhaarDoc = (docRows || []).find((d) => d.document_type === 'aadhaar');
-      setAadhaarDocument(aadhaarDoc || null);
-
-      // Load property defaults
-      const { data: property, error: propertyError } =
-        await supabase
-          .from('properties')
-          .select('name, rent_collection_mode, rent_calculation_method, due_day')
-          .eq('id', data.property_id)
-          .eq('owner_id', user.id)
-          .maybeSingle();
-
-      if (propertyError) throw propertyError;
-
-      const propertyName =
-        property?.name || 'Property unavailable';
-
-      const rentCollectionMode = data.rent_collection_mode || property?.rent_collection_mode || 'POST_PAID';
-      const rentCalculationMethod = data.rent_calculation_method || property?.rent_calculation_method || 'RELATIVE';
-      const dueDay = Number(data.due_day || property?.due_day || 10);
-      const moveInDate = data.move_in_date || '';
-      const rentStartDate = data.rent_start_date || moveInDate;
-      const leaseType = data.lease_type || 'UNTIL_LEAVES';
-      const agreementExpiry = data.lease_expires_on 
-        ? new Date(`${data.lease_expires_on}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })
-        : (leaseType === 'UNTIL_LEAVES' ? 'Until Tenant Leaves' : '');
-
-      const aadharNum = parsedNotes.aadhar_number || '';
+      const moveIn = data.move_in_date || '';
+      const rent = Number(data.monthly_rent) || 0;
+      const dueDay = Number(data.due_day) || 10;
 
       const formattedTenant = {
         ...data,
         name: data.full_name,
         propertyName,
+        address: data.permanent_address || '',
+        rent,
+        deposit: Number(data.security_deposit) || 0,
+        startDate: moveIn,
+        moveInDate: moveIn,
+        dueDay,
+        isPostPaid: true,
+        idProof: aadharNum,
+        agreementExpiry: data.lease_expires_on
+          ? new Date(`${data.lease_expires_on}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })
+          : (data.lease_type === 'UNTIL_LEAVES' ? 'Until Tenant Leaves' : ''),
         flatNo: data.unit_label || '',
         unit: data.unit_label
           ? `${data.unit_label} (${propertyName})`
           : propertyName,
-        address: data.permanent_address || '',
-        rent: data.monthly_rent,
-        deposit: data.security_deposit,
-        moveInDate,
-        rentStartDate,
-        startDate: rentStartDate || moveInDate,
-        rentCollectionMode,
-        rentCalculationMethod,
-        dueDay,
-        isPostPaid: rentCollectionMode === 'POST_PAID',
-        leaseType,
-        idProof: aadharNum || (aadhaarDoc ? 'Aadhaar Verified' : ''),
-        roomType: parsedNotes.room_type || '',
-        agreementExpiry,
+        status: (data.status || 'active').toLowerCase(),
       };
 
-      // Load payment records from Supabase.
-      const { data: paymentRows, error: paymentsError } =
-        await supabase
-          .from('payments')
-          .select(
-            'id, tenant_id, payment_date, payment_month, rent_amount, electricity_amount, total_amount, payment_method, electricity_previous_reading, electricity_new_reading, electricity_units, electricity_unit_rate, receipt_number, description, created_at'
-          )
-          .eq('tenant_id', id)
-          .eq('owner_id', user.id)
-          .order('payment_date', { ascending: false });
+      const databaseReceipts = (paymentRows || []).map((payment) => {
+        const pMonth = payment.payment_month || payment.payment_date;
+        const pMonthKey = toMonthKey(pMonth);
+        const displayMonth = pMonthKey ? fmtMonthLabel(pMonthKey) : '';
+        const periodInfo = calculatePeriodRange(moveIn, pMonthKey);
 
-      if (paymentsError) throw paymentsError;
+        return {
+          id: payment.id,
+          receiptNumber: payment.receipt_number || `RP-${payment.id.slice(0, 8)}`,
+          tenantId: payment.tenant_id,
+          tenantName: data.full_name,
+          phone: data.phone || '',
+          unit: formattedTenant.unit,
+          amount: Number(payment.rent_amount) || 0,
+          electricityAmount: Number(payment.electricity_amount) || 0,
+          prevReading: Number(payment.electricity_previous_reading) || 0,
+          currReading: Number(payment.electricity_new_reading) || 0,
+          consumedUnits: Number(payment.electricity_units) || 0,
+          totalAmount: Number(payment.total_amount) || 0,
+          paymentMode: payment.payment_method || 'UPI',
+          description: payment.description || '',
+          month: displayMonth,
+          monthKey: pMonthKey,
+          paymentMonth: payment.payment_month,
+          payment_month: payment.payment_month,
+          date: payment.payment_date
+            ? new Date(`${payment.payment_date}T12:00:00`).toLocaleDateString('en-GB')
+            : '',
+          paymentDate: payment.payment_date,
+          periodRange: periodInfo.range,
+          collectionMode: 'Post-Paid (Previous Month)',
+          calculationMethod: 'Fixed (1st of Every Month)',
+          createdAt: payment.created_at,
+        };
+      });
 
-      const databaseReceipts = (paymentRows || []).map(
-        (row) => {
-          const monthValue =
-            row.payment_month || row.payment_date;
-
-          const monthDate = monthValue
-            ? new Date(
-                `${monthValue.slice(0, 7)}-15T12:00:00`
-              )
-            : null;
-
-          const dateValue = row.payment_date
-            ? new Date(`${row.payment_date}T12:00:00`)
-            : null;
-
-          return {
-            id: row.id,
-            receiptNumber: row.receipt_number,
-            tenantId: row.tenant_id,
-            tenantName: formattedTenant.name,
-            phone: formattedTenant.phone || '',
-            unit: formattedTenant.unit,
-            amount: Number(row.rent_amount) || 0,
-            electricityAmount:
-              Number(row.electricity_amount) || 0,
-            prevReading:
-              Number(row.electricity_previous_reading) || 0,
-            currReading:
-              Number(row.electricity_new_reading) || 0,
-            consumedUnits:
-              Number(row.electricity_units) || 0,
-            totalAmount: Number(row.total_amount) || 0,
-            paymentMode: row.payment_method || 'UPI',
-            description: row.description || '',
-            periodRange:
-              monthValue && formattedTenant.moveInDate
-                ? calculatePeriodRange(
-                    formattedTenant.moveInDate,
-                    monthValue.slice(0, 7)
-                  ).range
-                : '',
-            collectionMode: 'Post-Paid',
-            month: monthDate
-              ? monthDate.toLocaleString('en-US', {
-                  month: 'long',
-                  year: 'numeric',
-                })
-              : 'Rent Payment',
-            date: dateValue
-              ? dateValue.toLocaleDateString('en-GB')
-              : '',
-            paymentDate: row.payment_date,
-            paymentMonth: row.payment_month,
-            monthKey: row.payment_month ? row.payment_month.slice(0, 7) : (row.payment_date ? row.payment_date.slice(0, 7) : ''),
-            createdAt: row.created_at,
-          };
-        }
-      );
-
-      // Preserve older receipts that exist only in this browser.
       let legacyReceipts = [];
-
       try {
         const savedReceipts = JSON.parse(
           localStorage.getItem('app_receipts') || '[]'
         );
-
-        legacyReceipts = savedReceipts
-          .filter(
-            (receipt) =>
-              String(receipt.tenantId) === String(id) &&
-              !databaseReceipts.some(
-                (saved) =>
-                  String(saved.id) === String(receipt.id)
-              )
-          )
-          .map((receipt) => ({
-            ...receipt,
-            tenantName:
-              receipt.tenantName || formattedTenant.name,
-            phone: receipt.phone || formattedTenant.phone || '',
-            unit: receipt.unit || formattedTenant.unit,
-          }));
-      } catch (storageError) {
-        console.warn(
-          'Could not read older browser receipts:',
-          storageError
+        legacyReceipts = savedReceipts.filter(
+          (receipt) =>
+            String(receipt.tenantId) === String(id) &&
+            !databaseReceipts.some((dbR) => String(dbR.id) === String(receipt.id))
         );
+      } catch (storageError) {
+        console.warn('Could not read older receipts:', storageError);
       }
 
       setTenant(formattedTenant);
-
       setEditForm({
         name: formattedTenant.name || '',
         phone: formattedTenant.phone || '',
@@ -296,13 +248,10 @@ export default function TenantDetails() {
         dueDay: data.due_day || 10,
       });
 
-      // Database records first, older browser receipts afterward.
       setPayments([...databaseReceipts, ...legacyReceipts]);
     } catch (err) {
       console.error('Error loading tenant details:', err);
-      setLoadError(
-        err.message || 'Could not load tenant details.'
-      );
+      setLoadError(err.message || 'Could not load tenant details.');
     } finally {
       if (showSpinner) setIsLoading(false);
     }
@@ -323,7 +272,6 @@ export default function TenantDetails() {
     0
   );
 
-  // ── Month-wise Rent Ledger (Hook called unconditionally) ──────────────────
   const monthLedger = useMemo(() => {
     if (!tenant) return [];
     const now = new Date();
@@ -332,7 +280,6 @@ export default function TenantDetails() {
     const dueDay = tenant.dueDay || 10;
     const moveInDate = tenant.moveInDate || tenant.move_in_date || tenant.startDate || '';
 
-    // Determine start month from move_in_date
     let startKey = todayKey;
     if (moveInDate && String(moveInDate).length >= 7) {
       startKey = String(moveInDate).slice(0, 7);
@@ -352,13 +299,12 @@ export default function TenantDetails() {
       return '';
     };
 
-    // Map payments by month key for quick lookup
     const paidByMonth = {};
     payments.forEach((p) => {
       const mk = getPaymentMonthKey(p);
       if (!mk) return;
       if (!paidByMonth[mk]) paidByMonth[mk] = 0;
-      paidByMonth[mk] += Number(p.amount) || 0; // Rent payment only
+      paidByMonth[mk] += Number(p.amount) || 0;
     });
 
     const rows = [];
@@ -379,7 +325,6 @@ export default function TenantDetails() {
       });
       const balance = Math.max(roundToTwo(due - paid), 0);
 
-      // In Fixed Post-Paid: Rent for month mk is due on dueDay in month mk+1
       const dueDateStr = calculateDueDate(mk, dueDay);
       const nextMk = getNextMonthKey(mk);
       const dueNote = `Due on ${dueDay} ${fmtShortMonth(nextMk)}`;
@@ -390,7 +335,7 @@ export default function TenantDetails() {
       } else if (paid > 0) {
         status = 'PARTIAL';
       } else if (todayDateStr <= dueDateStr) {
-        status = 'UPCOMING'; // Not yet overdue
+        status = 'UPCOMING';
       } else {
         status = 'OVERDUE';
       }
@@ -410,7 +355,7 @@ export default function TenantDetails() {
       });
       cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1, 12);
     }
-    return rows.reverse(); // newest first
+    return rows.reverse();
   }, [tenant, payments, monthlyRent]);
 
   const ledgerPendingCount = monthLedger.filter((r) => r.status === 'OVERDUE' || r.status === 'PARTIAL').length;
@@ -422,31 +367,6 @@ export default function TenantDetails() {
   const ledgerTotalOutstanding = roundToTwo(
     monthLedger.reduce((s, r) => s + r.balance, 0)
   );
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#f8fafc] text-sm font-bold text-slate-600">
-        Loading tenant details...
-      </div>
-    );
-  }
-
-  if (loadError || !tenant) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-[#f8fafc] p-6">
-        <p className="text-sm font-semibold text-rose-600 text-center">
-          {loadError || 'Tenant not found.'}
-        </p>
-
-        <button
-          onClick={() => navigate('/tenants')}
-          className="px-4 py-2 rounded-xl bg-[#1e3a5f] text-white text-sm font-bold"
-        >
-          Back to Tenants
-        </button>
-      </div>
-    );
-  }
 
   const handleVacateTenant = async () => {
     const confirmed = window.confirm(
@@ -467,8 +387,7 @@ export default function TenantDetails() {
         throw new Error('Please sign in again.');
       }
 
-      const moveOutDate = new Date()
-        .toLocaleDateString('en-CA');
+      const moveOutDate = new Date().toLocaleDateString('en-CA');
 
       const { data, error } = await supabase
         .from('tenants')
@@ -498,7 +417,6 @@ export default function TenantDetails() {
     }
   };
 
-  // Called after RecordPaymentModal confirms the payment was saved.
   const handlePaymentSuccess = (receipt) => {
     setPayments((previous) => [
       receipt,
@@ -511,14 +429,12 @@ export default function TenantDetails() {
     setPreselectedAmount(null);
     setIsPayModalOpen(false);
 
-    // Update the display reading without changing tenant occupancy status.
     setTenant((previous) => ({
       ...previous,
       last_electricity_reading: receipt.currReading,
       last_electricity_reading_date: receipt.paymentDate,
     }));
 
-    // Re-sync authoritative Supabase records in background
     loadTenant(false);
   };
 
@@ -601,7 +517,7 @@ export default function TenantDetails() {
           }).select().single();
           if (newDoc) setAadhaarDocument(newDoc);
         } catch (docErr) {
-          console.warn('Could not save updated document record:', docErr);
+          console.warn('Could not save document record:', docErr);
         }
       }
 
@@ -618,22 +534,12 @@ export default function TenantDetails() {
         unit: data.unit_label
           ? `${data.unit_label} (${tenant.propertyName})`
           : tenant.propertyName,
-        agreementExpiry: data.lease_expires_on 
+        agreementExpiry: data.lease_expires_on
           ? new Date(`${data.lease_expires_on}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })
           : (data.lease_type === 'UNTIL_LEAVES' ? 'Until Tenant Leaves' : ''),
       };
 
       setTenant(updatedTenant);
-
-      setEditForm((previous) => ({
-        ...previous,
-        name: data.full_name || '',
-        phone: data.phone || '',
-        address: data.permanent_address || '',
-        rent: data.monthly_rent ?? '',
-        deposit: data.security_deposit ?? '',
-      }));
-
       setIsEditModalOpen(false);
       alert('Tenant details updated successfully!');
     } catch (error) {
@@ -643,41 +549,62 @@ export default function TenantDetails() {
   };
 
   const startWhatsApp = () => {
-    const cleanPhone = tenant.phone
-      ? tenant.phone.replace(/[^0-9]/g, '')
-      : '';
-
-    const phoneWithCode =
-      cleanPhone.length === 10
-        ? `91${cleanPhone}`
-        : cleanPhone;
-
+    const cleanPhone = tenant.phone ? tenant.phone.replace(/[^0-9]/g, '') : '';
+    const phoneWithCode = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
     if (!phoneWithCode) {
       alert('No valid phone number is available for this tenant.');
       return;
     }
-
-    window.open(
-      `https://wa.me/${phoneWithCode}`,
-      '_blank',
-      'noopener,noreferrer'
-    );
+    window.open(`https://wa.me/${phoneWithCode}`, '_blank', 'noopener,noreferrer');
   };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 text-xs font-bold text-muted">
+        Loading tenant details...
+      </div>
+    );
+  }
+
+  if (loadError || !tenant) {
+    return (
+      <div className="min-h-screen p-6 flex flex-col items-center justify-center gap-4">
+        <div className="rounded-card p-6 glass-panel text-center max-w-sm space-y-3">
+          <p className="text-xs font-bold text-rose">
+            {loadError || 'Tenant not found.'}
+          </p>
+          <button
+            onClick={() => navigate('/tenants')}
+            className="w-full py-2.5 rounded-btn bg-gradient-to-br from-[#3d4fe0] to-[#6a5cf0] text-white text-xs font-extrabold active:scale-95 shadow-sm"
+          >
+            Back to Tenants
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const isActiveTenant = tenant.status === 'active';
 
+  const detailTabs = [
+    { id: 'LEDGER', label: 'Rent Ledger', count: ledgerPendingCount > 0 ? ledgerPendingCount : undefined },
+    { id: 'HISTORY', label: 'Payment History', count: payments.length },
+  ];
+
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans pb-24">
-      <header className="bg-white/90 backdrop-blur-md border-b border-slate-200/80 px-4 py-3.5 sticky top-0 z-20 flex items-center justify-between">
+    <div className="min-h-screen text-ink dark:text-[#eef1ff] pb-24">
+      {/* Sticky Glass Top Header */}
+      <header className="sticky top-0 z-30 px-5 py-3.5 glass-panel-strong border-b border-white/80 dark:border-white/10 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate(-1)}
-            className="p-1 hover:bg-slate-100 rounded-xl transition"
+            className="w-9 h-9 rounded-btn glass-panel flex items-center justify-center text-muted hover:text-ink dark:hover:text-white transition active:scale-95 cursor-pointer"
+            aria-label="Go back"
           >
-            <ArrowLeft className="w-5 h-5 text-slate-900" />
+            <ArrowLeft className="w-4 h-4 stroke-[2.5]" />
           </button>
 
-          <h1 className="text-base font-bold text-slate-900">
+          <h1 className="text-base font-black text-ink dark:text-white leading-none">
             Tenant Details
           </h1>
         </div>
@@ -685,138 +612,122 @@ export default function TenantDetails() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setIsEditModalOpen(true)}
-            className="text-[#1e3a5f] bg-[#1e3a5f]/10 hover:bg-[#1e3a5f]/20 p-2 rounded-xl text-xs font-bold flex items-center gap-1 transition"
+            className="px-3 py-1.5 rounded-btn glass-panel text-primary dark:text-[#8d99ff] hover:bg-primary/15 text-xs font-extrabold flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
           >
-            <Edit3 className="w-4 h-4" />
+            <Edit3 className="w-3.5 h-3.5 stroke-[2]" />
             <span>Edit</span>
           </button>
 
           {isActiveTenant && (
             <button
               onClick={handleVacateTenant}
-              className="text-rose-600 bg-rose-50 hover:bg-rose-100 p-2 rounded-xl text-xs font-bold flex items-center gap-1 transition"
+              className="px-3 py-1.5 rounded-btn bg-rose/10 hover:bg-rose/20 text-rose border border-rose/20 text-xs font-extrabold flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
             >
-              <DoorOpen className="w-4 h-4" />
+              <DoorOpen className="w-3.5 h-3.5 stroke-[2]" />
               <span>Vacate</span>
             </button>
           )}
         </div>
       </header>
 
-      <main className="p-4 space-y-4 max-w-md mx-auto">
-        <div className="bg-white rounded-[32px] p-6 border border-slate-200/80 shadow-[0_8px_30px_rgb(0,0,0,0.06)]">
+      <main className="p-4 sm:p-5 space-y-4">
+        {/* Main Tenant Profile Hero Card */}
+        <GlassCard className="animate-fade-up space-y-4">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-[#1e3a5f]/10 border border-[#1e3a5f]/20 text-[#1e3a5f] flex items-center justify-center font-black text-xl shadow-xs">
-              {tenant.name
-                ? tenant.name.substring(0, 2).toUpperCase()
-                : 'TN'}
-            </div>
+            <Avatar name={tenant.name} size="lg" />
 
-            <div>
-              <h2 className="text-xl font-black text-slate-900">
-                {tenant.name}
-              </h2>
-              <p className="text-xs text-slate-500 font-medium mt-0.5">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-xl font-black text-ink dark:text-white tracking-tight truncate">
+                  {tenant.name}
+                </h2>
+                <StatusBadge status={isActiveTenant ? 'PAID' : 'INACTIVE'} />
+              </div>
+
+              <p className="text-xs text-muted dark:text-[#98a3c4] font-semibold mt-0.5 truncate">
                 {tenant.unit}
               </p>
             </div>
           </div>
 
-          <div className="mt-3.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200/70 flex items-start gap-2 text-xs">
-            <MapPin className="w-4 h-4 text-[#1e3a5f] shrink-0 mt-0.5" />
-            <p className="text-slate-600 font-medium leading-relaxed">
-              {tenant.address || 'No address provided'}
-            </p>
-          </div>
+          {tenant.address && (
+            <div className="rounded-btn p-2.5 glass-panel-strong border border-white/90 dark:border-white/10 flex items-start gap-2 text-xs">
+              <MapPin className="w-4 h-4 text-primary shrink-0 mt-0.5 stroke-[2]" />
+              <p className="text-muted dark:text-[#98a3c4] font-medium leading-relaxed">
+                {tenant.address}
+              </p>
+            </div>
+          )}
 
-          <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-100">
+          {/* Quick Contact Buttons */}
+          <div className="grid grid-cols-2 gap-2.5 pt-1">
             <a
               href={`tel:${tenant.phone}`}
-              className="py-2 px-3 bg-slate-50 hover:bg-slate-100 border border-slate-200/70 rounded-xl text-xs font-bold text-slate-700 flex items-center justify-center gap-1.5 transition"
+              className="py-2.5 px-3 rounded-btn glass-panel text-ink dark:text-white text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition"
             >
-              <Phone className="w-3.5 h-3.5 text-[#1e3a5f]" />
+              <Phone className="w-3.5 h-3.5 text-primary stroke-[2]" />
               <span>Call ({tenant.phone})</span>
             </a>
 
             <button
+              type="button"
               onClick={startWhatsApp}
-              className="py-2 px-3 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/60 rounded-xl text-xs font-bold text-emerald-700 flex items-center justify-center gap-1.5 transition"
+              className="py-2.5 px-3 rounded-btn bg-teal/15 hover:bg-teal/25 text-teal border border-teal/25 text-xs font-extrabold flex items-center justify-center gap-1.5 active:scale-95 transition cursor-pointer"
             >
-              <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+              <MessageCircle className="w-3.5 h-3.5 stroke-[2]" />
               <span>WhatsApp</span>
             </button>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 mt-4 pt-3 border-t border-slate-100 text-xs">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-slate-500 font-medium">
-                Join Date: <strong>{tenant.startDate || 'N/A'}</strong>
-              </span>
-              <span className="text-[10px] font-bold text-[#1e3a5f] bg-[#1e3a5f]/10 border border-[#1e3a5f]/20 px-2 py-0.5 rounded-md">
-                {tenant.isPostPaid ? `Post-Paid (Previous Month) • Due Day ${tenant.dueDay || 10}` : `Pre-Paid (Current Month) • Due Day ${tenant.dueDay || 10}`}
-              </span>
-            </div>
-
-            <span
-              className={`px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider text-[10px] ${
-                isActiveTenant
-                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                  : 'bg-slate-100 text-slate-600 border border-slate-200'
-              }`}
-            >
-              {isActiveTenant ? 'ACTIVE' : tenant.status === 'vacated' ? 'VACATED' : 'ARCHIVED'}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-white/80 dark:border-white/10 text-xs">
+            <span className="text-muted dark:text-[#98a3c4] font-semibold">
+              Joined: <strong className="text-ink dark:text-white font-extrabold">{tenant.startDate || 'N/A'}</strong>
+            </span>
+            <span className="text-[10px] font-extrabold text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full">
+              Post-Paid • Due {tenant.dueDay || 10}th
             </span>
           </div>
+        </GlassCard>
+
+        {/* 3 Metric Tiles (Rent, Deposit, Total Paid) */}
+        <div className="grid grid-cols-3 gap-2.5 animate-fade-up">
+          <StatTile
+            label="Rent"
+            value={`₹${monthlyRent.toLocaleString('en-IN')}`}
+            color="primary"
+          />
+          <StatTile
+            label="Deposit"
+            value={`₹${securityDeposit.toLocaleString('en-IN')}`}
+            color="indigo"
+          />
+          <StatTile
+            label="Total Paid"
+            value={`₹${totalCollected.toLocaleString('en-IN')}`}
+            color="teal"
+          />
         </div>
 
-        <div className="grid grid-cols-3 gap-2.5">
-          <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs text-center">
-            <p className="text-[10px] text-slate-400 font-bold uppercase">
-              Rent
-            </p>
-            <p className="text-sm font-black text-slate-900 mt-0.5">
-              ₹{monthlyRent.toLocaleString()}
-            </p>
-          </div>
-
-          <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs text-center">
-            <p className="text-[10px] text-slate-400 font-bold uppercase">
-              Deposit
-            </p>
-            <p className="text-sm font-black text-slate-900 mt-0.5">
-              ₹{securityDeposit.toLocaleString()}
-            </p>
-          </div>
-
-          <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-xs text-center">
-            <p className="text-[10px] text-slate-400 font-bold uppercase">
-              Total Paid
-            </p>
-            <p className="text-sm font-black text-emerald-600 mt-0.5">
-              ₹{totalCollected.toLocaleString()}
-            </p>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-3xl p-4 border border-slate-200/80 shadow-xs space-y-2.5 text-xs">
-          <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-            KYC &amp; Document Records
+        {/* KYC & Document Record Tile */}
+        <GlassCard className="animate-fade-up space-y-2.5 text-xs">
+          <h3 className="text-[11px] font-extrabold text-muted dark:text-[#98a3c4] uppercase tracking-wider">
+            KYC &amp; Agreement Details
           </h3>
 
-          <div className="flex items-center justify-between py-1 border-b border-slate-100">
-            <span className="flex items-center gap-1.5 text-slate-600 font-medium">
-              <ShieldCheck className="w-4 h-4 text-[#1e3a5f]" />
-              Aadhaar / ID Proof
+          <div className="flex items-center justify-between py-1 border-b border-white/60 dark:border-white/10">
+            <span className="flex items-center gap-1.5 text-muted dark:text-[#98a3c4] font-semibold">
+              <ShieldCheck className="w-4 h-4 text-primary stroke-[2]" />
+              Aadhaar / ID Card
             </span>
             <div className="flex items-center gap-2">
-              <span className="font-bold text-slate-900">
+              <span className="font-extrabold text-ink dark:text-white">
                 {tenant.idProof || (aadhaarDocument ? 'Document Verified' : 'Not Provided')}
               </span>
               {aadhaarDocument?.file_path && (
                 <button
                   type="button"
                   onClick={() => setIsDocPreviewOpen(true)}
-                  className="px-2.5 py-1 bg-[#1e3a5f]/10 text-[#1e3a5f] hover:bg-[#1e3a5f]/20 rounded-lg font-bold text-[10px] transition active:scale-95"
+                  className="px-2 py-0.5 rounded-full bg-primary/10 text-primary hover:bg-primary/20 text-[10px] font-extrabold transition active:scale-95"
                 >
                   View Photo
                 </button>
@@ -825,537 +736,360 @@ export default function TenantDetails() {
           </div>
 
           <div className="flex items-center justify-between py-1">
-            <span className="flex items-center gap-1.5 text-slate-600 font-medium">
-              <Calendar className="w-4 h-4 text-[#1e3a5f]" />
+            <span className="flex items-center gap-1.5 text-muted dark:text-[#98a3c4] font-semibold">
+              <Calendar className="w-4 h-4 text-primary stroke-[2]" />
               Agreement Validity
             </span>
-            <span className="font-bold text-slate-900">
+            <span className="font-extrabold text-ink dark:text-white">
               {tenant.agreementExpiry || 'Not Specified'}
             </span>
           </div>
-        </div>
+        </GlassCard>
 
+        {/* Primary Collect Button */}
         {isActiveTenant && (
           <button
+            type="button"
             onClick={() => { setPreselectedMonth(null); setPreselectedAmount(null); setIsPayModalOpen(true); }}
-            className="w-full py-3.5 bg-[#1e3a5f] hover:bg-[#162b47] text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-md shadow-[#1e3a5f]/20 active:scale-95 transition text-xs"
+            className="w-full py-3.5 px-4 rounded-btn bg-gradient-to-br from-[#3d4fe0] to-[#6a5cf0] text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-md shadow-[#3d4fe0]/25 active:scale-95 transition cursor-pointer"
           >
             <Plus className="w-4 h-4 stroke-[2.5]" />
-            <span>Record New Payment</span>
+            <span>Record Rent Payment</span>
           </button>
         )}
 
-        {/* ── Tabs: Ledger / History ──────────────────────────────────── */}
-        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
-          {/* Tab switcher */}
-          <div className="flex border-b border-slate-100">
-            <button
-              onClick={() => setActiveDetailTab('LEDGER')}
-              className={`flex-1 py-3 text-xs font-bold flex items-center justify-center gap-1.5 transition ${
-                activeDetailTab === 'LEDGER'
-                  ? 'text-[#1e3a5f] border-b-2 border-[#1e3a5f] bg-[#1e3a5f]/5'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              <BookOpen className="w-3.5 h-3.5" />
-              Rent Ledger
-              {ledgerPendingCount > 0 && (
-                <span className="bg-rose-500 text-white text-[9px] font-black rounded-full px-1.5 py-0.5 leading-none">
-                  {ledgerPendingCount}
-                </span>
+        {/* Ledger vs Payment History Section */}
+        <GlassCard className="animate-fade-up space-y-4">
+          <SegmentedTabs
+            tabs={detailTabs}
+            activeTab={activeDetailTab}
+            onChange={setActiveDetailTab}
+          />
+
+          {/* Ledger View */}
+          {activeDetailTab === 'LEDGER' && (
+            <div className="space-y-3">
+              {ledgerTotalOutstanding > 0 && (
+                <div className="rounded-tile p-3.5 bg-rose/10 border border-rose/25 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] text-rose font-extrabold uppercase tracking-wider">Total Outstanding</p>
+                      <p className="text-base font-black text-rose mt-0.5">₹{ledgerTotalOutstanding.toLocaleString('en-IN')}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] text-muted font-bold uppercase tracking-wider">Overdue Dues</p>
+                      <p className="text-sm font-black text-rose mt-0.5">₹{overdueBalance.toLocaleString('en-IN')}</p>
+                    </div>
+                  </div>
+                </div>
               )}
-            </button>
-            <button
-              onClick={() => setActiveDetailTab('HISTORY')}
-              className={`flex-1 py-3 text-xs font-bold flex items-center justify-center gap-1.5 transition ${
-                activeDetailTab === 'HISTORY'
-                  ? 'text-[#1e3a5f] border-b-2 border-[#1e3a5f] bg-[#1e3a5f]/5'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              <Receipt className="w-3.5 h-3.5" />
-              Payment History
-              <span className="bg-slate-200 text-slate-600 text-[9px] font-black rounded-full px-1.5 py-0.5 leading-none">
-                {payments.length}
-              </span>
-            </button>
-          </div>
 
-          <div className="p-4">
-            {/* ── LEDGER TAB ── */}
-            {activeDetailTab === 'LEDGER' && (
-              <>
-                {/* Ledger summary */}
-                {ledgerTotalOutstanding > 0 && (
-                  <div className="mb-3 bg-rose-50 border border-rose-200 rounded-2xl px-3.5 py-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-[10px] text-rose-600 font-bold uppercase tracking-wider">Total Outstanding</p>
-                        <p className="text-base font-black text-rose-700 mt-0.5">₹{ledgerTotalOutstanding.toLocaleString('en-IN')}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Overdue Dues</p>
-                        <p className="text-sm font-black text-rose-600 mt-0.5">₹{overdueBalance.toLocaleString('en-IN')}</p>
-                      </div>
-                    </div>
-                    <div className="pt-1.5 border-t border-rose-200/60 flex items-center justify-between text-[10px] text-rose-600 font-semibold">
-                      <span>{ledgerPendingCount} unpaid / partial period{ledgerPendingCount !== 1 ? 's' : ''}</span>
-                      <span>{monthLedger.filter(r => r.status === 'OVERDUE').length} overdue period{monthLedger.filter(r => r.status === 'OVERDUE').length !== 1 ? 's' : ''}</span>
-                    </div>
-                  </div>
-                )}
+              {monthLedger.length === 0 ? (
+                <p className="text-center text-xs text-muted py-6">No ledger records available.</p>
+              ) : (
+                <div className="space-y-2">
+                  {monthLedger.map((row) => {
+                    const isPaid = row.status === 'PAID';
+                    const isPartial = row.status === 'PARTIAL';
+                    const isUpcoming = row.status === 'UPCOMING';
 
-                {monthLedger.length === 0 ? (
-                  <p className="text-center text-xs text-slate-400 py-6">No ledger data. Add a move-in date to the tenant.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {monthLedger.map((row) => {
-                      const isPaid = row.status === 'PAID';
-                      const isPartial = row.status === 'PARTIAL';
-                      const isUpcoming = row.status === 'UPCOMING';
-                      const isOverdue = row.status === 'OVERDUE';
+                    return (
+                      <div
+                        key={row.monthKey}
+                        className="rounded-tile p-3 glass-panel-strong border border-white/90 dark:border-white/10 flex items-center justify-between gap-2.5 text-xs"
+                      >
+                        <div className="min-w-0 space-y-0.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="font-extrabold text-ink dark:text-white">{row.label}</p>
+                            <StatusBadge status={row.status} />
+                          </div>
 
-                      return (
-                        <div
-                          key={row.monthKey}
-                          className={`flex items-center justify-between p-3 rounded-2xl border text-xs transition ${
-                            isPaid
-                              ? 'bg-emerald-50/70 border-emerald-200/70'
+                          <p className="text-[11px] text-muted dark:text-[#98a3c4] font-semibold">
+                            {isPaid
+                              ? `Paid ₹${row.paid.toLocaleString('en-IN')}`
                               : isPartial
-                              ? 'bg-amber-50/70 border-amber-200/70'
-                              : isUpcoming
-                              ? 'bg-blue-50/50 border-blue-200/60'
-                              : 'bg-rose-50/50 border-rose-200/60'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5">
-                            <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 ${
-                              isPaid ? 'bg-emerald-100 text-emerald-600'
-                              : isPartial ? 'bg-amber-100 text-amber-600'
-                              : isUpcoming ? 'bg-blue-100 text-blue-600'
-                              : 'bg-rose-100 text-rose-500'
-                            }`}>
-                              {isPaid
-                                ? <CheckCircle2 className="w-4 h-4" />
-                                : isPartial
-                                ? <Clock className="w-4 h-4" />
-                                : isUpcoming
-                                ? <Clock className="w-4 h-4" />
-                                : <AlertCircle className="w-4 h-4" />}
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <p className="font-bold text-slate-900">{row.label}</p>
-                                <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-md ${
-                                  isPaid ? 'bg-emerald-100 text-emerald-800'
-                                  : isPartial ? 'bg-amber-100 text-amber-800'
-                                  : isUpcoming ? 'bg-blue-100 text-blue-800'
-                                  : 'bg-rose-100 text-rose-800'
-                                }`}>
-                                  {isPaid ? 'PAID' : isPartial ? 'PARTIAL' : isUpcoming ? 'IN PROGRESS' : 'OVERDUE'}
-                                </span>
-                              </div>
-                              <p className={`text-[10px] font-semibold mt-0.5 ${
-                                isPaid ? 'text-emerald-600'
-                                : isPartial ? 'text-amber-600'
-                                : isUpcoming ? 'text-blue-600'
-                                : 'text-rose-500'
-                              }`}>
-                                {isPaid
-                                  ? `Paid ₹${row.paid.toLocaleString('en-IN')}`
-                                  : isPartial
-                                  ? `Paid ₹${row.paid.toLocaleString('en-IN')} • Balance ₹${row.balance.toLocaleString('en-IN')}`
-                                  : `Due ₹${row.due.toLocaleString('en-IN')}`}
-                                <span className="text-slate-400 font-normal ml-1">
-                                  • {row.dueNote}
-                                </span>
-                              </p>
-                            </div>
-                          </div>
+                                ? `Paid ₹${row.paid.toLocaleString('en-IN')} • Balance ₹${row.balance.toLocaleString('en-IN')}`
+                                : `Due ₹${row.due.toLocaleString('en-IN')}`}
+                            <span className="opacity-75 ml-1">• {row.dueNote}</span>
+                          </p>
+                        </div>
 
-                          <div className="flex items-center gap-2 shrink-0">
-                            {/* View receipts for this month */}
-                            {row.receipts.length > 0 && (
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {row.receipts.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedReceipt(row.receipts[0])}
+                              className="w-7 h-7 rounded-btn glass-panel flex items-center justify-center text-muted hover:text-ink dark:hover:text-white transition active:scale-95"
+                              title="View receipt"
+                            >
+                              <ReceiptIndianRupee className="w-3.5 h-3.5 stroke-[2]" />
+                            </button>
+                          )}
+
+                          {!isPaid && isActiveTenant && (
+                            <div className="flex items-center gap-1">
                               <button
-                                onClick={() => setSelectedReceipt(row.receipts[0])}
-                                className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-500 hover:text-[#1e3a5f] transition cursor-pointer"
-                                title="View receipt"
+                                type="button"
+                                onClick={() => handleSendLedgerWhatsAppReminder(row)}
+                                className="w-7 h-7 rounded-btn bg-teal/15 text-teal flex items-center justify-center transition active:scale-95"
+                                title="Send WhatsApp reminder"
                               >
-                                <Receipt className="w-3.5 h-3.5" />
+                                <MessageCircle className="w-3.5 h-3.5 stroke-[2]" />
                               </button>
-                            )}
-                            {/* Collect button and WhatsApp reminder for pending/partial/upcoming */}
-                            {!isPaid && isActiveTenant && (
-                              <div className="flex items-center gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => handleSendLedgerWhatsAppReminder(row)}
-                                  className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-600 transition active:scale-95 cursor-pointer"
-                                  title="Send WhatsApp rent reminder for this month"
-                                >
-                                  <MessageCircle className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setPreselectedMonth(row.monthKey);
-                                    setPreselectedAmount(isPartial ? row.balance : row.due);
-                                    setIsPayModalOpen(true);
-                                  }}
-                                  className="px-2.5 py-1 bg-[#1e3a5f] hover:bg-[#162b47] text-white text-[10px] font-bold rounded-lg transition active:scale-95 cursor-pointer"
-                                >
-                                  {isPartial ? 'Pay Balance' : 'Collect'}
-                                </button>
-                              </div>
-                            )}
-                          </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPreselectedMonth(row.monthKey);
+                                  setPreselectedAmount(isPartial ? row.balance : row.due);
+                                  setIsPayModalOpen(true);
+                                }}
+                                className="px-2.5 py-1 rounded-btn bg-gradient-to-br from-[#3d4fe0] to-[#6a5cf0] text-white text-[10px] font-extrabold active:scale-95 transition"
+                              >
+                                {isPartial ? 'Pay Balance' : 'Collect'}
+                              </button>
+                            </div>
+                          )}
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </>
-            )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
-            {/* ── HISTORY TAB ── */}
-            {activeDetailTab === 'HISTORY' && (
-              <>
-                {payments.length === 0 ? (
-                  <p className="text-center text-xs text-slate-400 py-6">
-                    No payment records available.
-                  </p>
-                ) : (
-                  <div className="divide-y divide-slate-100">
-                    {payments.map((payment, index) => {
-                      const rentAmount = Number(payment.amount) || 0;
-                      const electricityAmount = Number(payment.electricityAmount) || 0;
-                      const totalPaid = rentAmount + electricityAmount;
+          {/* History View */}
+          {activeDetailTab === 'HISTORY' && (
+            <div>
+              {payments.length === 0 ? (
+                <p className="text-center text-xs text-muted py-6">
+                  No payment records available.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {payments.map((payment, index) => {
+                    const rentAmount = Number(payment.amount) || 0;
+                    const electricityAmount = Number(payment.electricityAmount) || 0;
+                    const totalPaid = rentAmount + electricityAmount;
 
-                      return (
-                        <div
-                          key={payment.id || index}
-                          onClick={() => setSelectedReceipt(payment)}
-                          className="py-3 flex items-center justify-between text-xs cursor-pointer hover:bg-slate-50 px-2 rounded-xl transition active:scale-[0.99]"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-[#1e3a5f]/10 text-[#1e3a5f] flex items-center justify-center font-bold">
-                              <Receipt className="w-4 h-4" />
-                            </div>
-
-                            <div>
-                              <p className="font-bold text-slate-900">
-                                {payment.month || 'Rent Payment'}
-                              </p>
-                              <p className="text-slate-400 text-[11px]">
-                                {payment.date || ''} •{' '}
-                                <span className="text-[#1e3a5f] font-semibold">
-                                  {payment.paymentMode || 'UPI'}
-                                </span>
-                              </p>
-                            </div>
+                    return (
+                      <div
+                        key={payment.id || index}
+                        onClick={() => setSelectedReceipt(payment)}
+                        className="rounded-tile p-3 glass-panel-strong hover:bg-white dark:hover:bg-[#1a2142] flex items-center justify-between text-xs cursor-pointer transition active:scale-[0.99] border border-white/90 dark:border-white/10"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-btn bg-primary/10 text-primary flex items-center justify-center font-bold">
+                            <ReceiptIndianRupee className="w-4 h-4 stroke-[2]" />
                           </div>
 
-                          <div className="flex items-center gap-1.5 text-right">
-                            <div>
-                              <span className="font-black text-emerald-600 text-sm block">
-                                ₹{totalPaid.toLocaleString('en-IN')}
+                          <div>
+                            <p className="font-extrabold text-ink dark:text-white">
+                              {payment.month || 'Rent Payment'}
+                            </p>
+                            <p className="text-muted dark:text-[#98a3c4] text-[11px] font-medium">
+                              {payment.date || ''} •{' '}
+                              <span className="text-primary dark:text-[#8d99ff] font-bold">
+                                {payment.paymentMode || 'UPI'}
                               </span>
-
-                              {electricityAmount > 0 && (
-                                <span className="text-[10px] text-slate-400 block font-medium">
-                                  Electricity: ₹{electricityAmount.toLocaleString('en-IN')}
-                                </span>
-                              )}
-                            </div>
-
-                            <ChevronRight className="w-4 h-4 text-slate-400" />
+                            </p>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
+
+                        <div className="flex items-center gap-2 text-right">
+                          <div>
+                            <span className="font-black text-teal text-sm block">
+                              ₹{totalPaid.toLocaleString('en-IN')}
+                            </span>
+                            {electricityAmount > 0 && (
+                              <span className="text-[10px] text-muted block font-medium">
+                                Elec: ₹{electricityAmount.toLocaleString('en-IN')}
+                              </span>
+                            )}
+                          </div>
+
+                          <ChevronRight className="w-4 h-4 text-muted" />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </GlassCard>
       </main>
 
-      {isEditModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white w-full max-w-md rounded-[28px] p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-              <div className="flex items-center gap-2">
-                <Edit3 className="w-5 h-5 text-[#1e3a5f]" />
-                <h2 className="text-base font-black text-slate-900">
-                  Edit Tenant Details
-                </h2>
-              </div>
+      {/* Edit Tenant BottomSheet */}
+      <BottomSheet
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        title="Edit Tenant"
+        subtitle={`Update details for ${tenant?.name}`}
+      >
+        <form onSubmit={handleUpdateProfile} className="space-y-3.5">
+          <div>
+            <label className="block text-xs font-bold text-ink dark:text-white mb-1">
+              Full Name
+            </label>
+            <input
+              type="text"
+              required
+              value={editForm.name}
+              onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+              className="w-full px-3.5 py-2.5 rounded-[16px] glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-semibold text-ink dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 transition"
+            />
+          </div>
 
-              <button
-                type="button"
-                onClick={() => setIsEditModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-700"
-              >
-                <X className="w-5 h-5" />
-              </button>
+          <div>
+            <label className="block text-xs font-bold text-ink dark:text-white mb-1">
+              Phone Number
+            </label>
+            <input
+              type="tel"
+              required
+              value={editForm.phone}
+              onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+              className="w-full px-3.5 py-2.5 rounded-[16px] glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-semibold text-ink dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 transition"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-ink dark:text-white mb-1">
+              Permanent Address
+            </label>
+            <textarea
+              rows={2}
+              value={editForm.address}
+              onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+              className="w-full px-3.5 py-2 rounded-[16px] glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-semibold text-ink dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 transition resize-none"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5">
+            <div>
+              <label className="block text-xs font-bold text-ink dark:text-white mb-1">
+                Monthly Rent (₹)
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                required
+                value={editForm.rent}
+                onChange={(e) => setEditForm({ ...editForm, rent: e.target.value })}
+                className="w-full px-3.5 py-2 rounded-[16px] glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-extrabold text-ink dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 transition"
+              />
             </div>
 
-            <form
-              onSubmit={handleUpdateProfile}
-              className="space-y-3.5 text-xs font-semibold"
+            <div>
+              <label className="block text-xs font-bold text-ink dark:text-white mb-1">
+                Security Deposit (₹)
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={editForm.deposit}
+                onChange={(e) => setEditForm({ ...editForm, deposit: e.target.value })}
+                className="w-full px-3.5 py-2 rounded-[16px] glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-extrabold text-ink dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 transition"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-ink dark:text-white mb-1">
+              Aadhaar / ID Card No.
+            </label>
+            <input
+              type="text"
+              placeholder="xxxx xxxx xxxx"
+              value={editForm.idProof}
+              onChange={(e) => setEditForm({ ...editForm, idProof: e.target.value })}
+              className="w-full px-3.5 py-2.5 rounded-[16px] glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-semibold text-ink dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 transition"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-ink dark:text-white mb-1">
+              Agreement Expiry Date
+            </label>
+            <input
+              type="date"
+              value={editForm.agreementExpiry}
+              onChange={(e) => setEditForm({ ...editForm, agreementExpiry: e.target.value })}
+              className="w-full px-3.5 py-2 rounded-[16px] glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-semibold text-ink dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 transition"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-ink dark:text-white mb-1">
+              Rent Due Day of Month (1 - 28)
+            </label>
+            <input
+              type="number"
+              min="1"
+              max="28"
+              value={editForm.dueDay ?? 10}
+              onChange={(e) => setEditForm({ ...editForm, dueDay: e.target.value })}
+              className="w-full px-3.5 py-2 rounded-[16px] glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-extrabold text-ink dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 transition"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5 pt-2">
+            <button
+              type="button"
+              onClick={() => setIsEditModalOpen(false)}
+              className="py-3 px-3 rounded-btn glass-panel text-muted hover:text-ink dark:hover:text-white font-bold text-xs active:scale-95 transition cursor-pointer"
             >
-              <div>
-                <label className="block text-slate-600 mb-1">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editForm.name}
-                  onChange={(e) =>
-                    setEditForm({
-                      ...editForm,
-                      name: e.target.value,
-                    })
-                  }
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1e3a5f]"
-                />
-              </div>
+              Cancel
+            </button>
 
-              <div>
-                <label className="block text-slate-600 mb-1">
-                  Phone Number
-                </label>
-                <input
-                  type="tel"
-                  required
-                  value={editForm.phone}
-                  onChange={(e) =>
-                    setEditForm({
-                      ...editForm,
-                      phone: e.target.value,
-                    })
-                  }
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1e3a5f]"
-                />
-              </div>
+            <button
+              type="submit"
+              className="py-3 px-3 rounded-btn bg-gradient-to-br from-[#3d4fe0] to-[#6a5cf0] text-white font-extrabold text-xs shadow-md shadow-[#3d4fe0]/25 active:scale-95 transition cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <Save className="w-4 h-4 stroke-[2.5]" />
+              <span>Update</span>
+            </button>
+          </div>
+        </form>
+      </BottomSheet>
 
-              <div>
-                <label className="block text-slate-600 mb-1">
-                  Permanent Address
-                </label>
-                <textarea
-                  rows={2}
-                  value={editForm.address}
-                  onChange={(e) =>
-                    setEditForm({
-                      ...editForm,
-                      address: e.target.value,
-                    })
-                  }
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1e3a5f] resize-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-600 mb-1">
-                    Rent Amount (₹)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    required
-                    value={editForm.rent}
-                    onChange={(e) =>
-                      setEditForm({
-                        ...editForm,
-                        rent: e.target.value,
-                      })
-                    }
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1e3a5f]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-600 mb-1">
-                    Security Deposit (₹)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={editForm.deposit}
-                    onChange={(e) =>
-                      setEditForm({
-                        ...editForm,
-                        deposit: e.target.value,
-                      })
-                    }
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1e3a5f]"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-600 mb-1">
-                  Aadhaar / ID Card No.
-                </label>
-                <input
-                  type="text"
-                  placeholder="xxxx xxxx xxxx"
-                  value={editForm.idProof}
-                  onChange={(e) =>
-                    setEditForm({
-                      ...editForm,
-                      idProof: e.target.value,
-                    })
-                  }
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1e3a5f]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-600 mb-1">
-                  Upload / Replace Aadhaar Card Photo
-                </label>
-                <div className="flex items-center gap-2">
-                  <label className="flex-1 cursor-pointer flex items-center justify-center gap-1.5 py-2 px-3 bg-slate-50 border border-dashed border-slate-300 hover:border-[#1e3a5f] rounded-xl text-xs font-semibold text-slate-600 transition">
-                    <Upload className="w-3.5 h-3.5 text-[#1e3a5f]" />
-                    <span className="truncate">{editAadharFile ? editAadharFile.name : 'Upload New ID Photo'}</span>
-                    <input
-                      type="file"
-                      accept="image/*,application/pdf"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        setEditAadharFile(file);
-                        const reader = new FileReader();
-                        reader.onload = (ev) => setEditAadharPreview(ev.target.result);
-                        reader.readAsDataURL(file);
-                      }}
-                      className="hidden"
-                    />
-                  </label>
-                  {(editAadharPreview || aadhaarDocument?.file_path) && (
-                    <img
-                      src={editAadharPreview || aadhaarDocument.file_path}
-                      alt="ID Preview"
-                      className="w-9 h-9 object-cover rounded-lg border border-slate-200 shadow-xs shrink-0"
-                    />
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-600 mb-1">
-                  Agreement Expiry Date
-                </label>
-                <input
-                  type="date"
-                  value={editForm.agreementExpiry}
-                  onChange={(e) =>
-                    setEditForm({
-                      ...editForm,
-                      agreementExpiry: e.target.value,
-                    })
-                  }
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1e3a5f]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-600 mb-1">
-                  Rent Due Day of Month (1 - 28)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="28"
-                  value={editForm.dueDay ?? 10}
-                  onChange={(e) =>
-                    setEditForm({
-                      ...editForm,
-                      dueDay: e.target.value,
-                    })
-                  }
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1e3a5f]"
-                />
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Post-paid rent will be due on this day in the following month (e.g. 10th).
+      {/* Aadhaar Preview Modal */}
+      <BottomSheet
+        isOpen={isDocPreviewOpen && !!aadhaarDocument}
+        onClose={() => setIsDocPreviewOpen(false)}
+        title="ID Proof Document"
+        subtitle={aadhaarDocument?.file_name || 'Aadhaar Card'}
+      >
+        <div className="space-y-3">
+          <div className="rounded-card overflow-hidden glass-panel-strong border border-white/90 dark:border-white/10 flex items-center justify-center min-h-[220px]">
+            {aadhaarDocument?.file_path && (aadhaarDocument.file_path.startsWith('data:image') || aadhaarDocument.file_path.startsWith('http')) ? (
+              <img
+                src={aadhaarDocument.file_path}
+                alt="Aadhaar Card"
+                className="w-full h-auto max-h-[50vh] object-contain rounded-xl"
+              />
+            ) : (
+              <div className="p-6 text-center">
+                <p className="text-xs text-muted font-bold">
+                  {aadhaarDocument?.file_name || 'ID Document'}
                 </p>
               </div>
-
-              <div className="pt-3 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="w-1/2 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="submit"
-                  className="w-1/2 py-3 bg-[#1e3a5f] hover:bg-[#162b47] text-white rounded-xl font-bold transition shadow-md shadow-[#1e3a5f]/20 active:scale-95 flex items-center justify-center gap-1.5"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>Update</span>
-                </button>
-              </div>
-            </form>
+            )}
           </div>
+
+          <a
+            href={aadhaarDocument?.file_path}
+            download={aadhaarDocument?.file_name || 'aadhaar_document'}
+            className="w-full py-3 rounded-btn bg-gradient-to-br from-[#3d4fe0] to-[#6a5cf0] text-white font-extrabold text-xs flex items-center justify-center gap-1.5 transition active:scale-95 shadow-md shadow-primary/20"
+          >
+            <Download className="w-4 h-4 stroke-[2]" />
+            <span>Download Document</span>
+          </a>
         </div>
-      )}
-
-      {/* Aadhaar / ID Card Document Preview Modal */}
-      {isDocPreviewOpen && aadhaarDocument && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white w-full max-w-lg rounded-3xl p-5 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-emerald-600" />
-                <h3 className="text-sm font-bold text-slate-900">Aadhaar / ID Card Proof</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsDocPreviewOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-700 rounded-full"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center min-h-[220px]">
-              {aadhaarDocument.file_path && (aadhaarDocument.file_path.startsWith('data:image') || aadhaarDocument.file_path.startsWith('http')) ? (
-                <img
-                  src={aadhaarDocument.file_path}
-                  alt="Aadhaar Card"
-                  className="w-full h-auto max-h-[60vh] object-contain rounded-xl"
-                />
-              ) : (
-                <div className="p-6 text-center">
-                  <p className="text-xs text-slate-600 font-bold">
-                    File: {aadhaarDocument.file_name || 'ID Document'}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-2">
-              <a
-                href={aadhaarDocument.file_path}
-                download={aadhaarDocument.file_name || 'aadhaar_document'}
-                className="w-full py-2.5 bg-[#1e3a5f] hover:bg-[#162b47] text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95"
-              >
-                <Download className="w-4 h-4" />
-                <span>Download Document</span>
-              </a>
-            </div>
-          </div>
-        </div>
-      )}
+      </BottomSheet>
 
       <RecordPaymentModal
         isOpen={isPayModalOpen}

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -14,6 +13,8 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import AddPropertyModal from '../components/AddPropertyModal';
+import GlassCard from '../components/ui/GlassCard';
+import BottomSheet from '../components/ui/BottomSheet';
 
 const emptyEditForm = {
   name: '',
@@ -294,7 +295,7 @@ export default function Properties() {
     } catch (err) {
       setActionError(
         err.message ||
-          'Unable to delete property. Check whether related records prevent deletion.'
+        'Unable to delete property. Check whether related records prevent deletion.'
       );
     } finally {
       setDeletingId(null);
@@ -302,31 +303,32 @@ export default function Properties() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans pb-28">
-      <header className="bg-white/90 backdrop-blur-md border-b border-slate-200/80 px-5 py-3.5 sticky top-0 z-20 flex items-center justify-between">
+    <div className="min-h-screen text-ink dark:text-[#eef1ff] pb-24">
+      {/* Sticky Glass Top Header */}
+      <header className="sticky top-0 z-30 px-5 py-3.5 glass-panel-strong border-b border-white/80 dark:border-white/10 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-black tracking-tight text-slate-900 leading-none">
-            All <span className="text-[#1e3a5f]">Properties</span>
+          <h1 className="text-xl font-black tracking-tight text-ink dark:text-white leading-none">
+            All Properties
           </h1>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
+          <p className="text-[10px] font-bold text-muted dark:text-[#98a3c4] uppercase tracking-wider mt-0.5">
             {properties.length} Properties Registered
           </p>
         </div>
 
         <button
           onClick={() => setIsAddModalOpen(true)}
-          className="bg-[#1e3a5f] hover:bg-[#162b47] text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-md shadow-[#1e3a5f]/20 active:scale-95 transition"
+          className="bg-gradient-to-br from-[#3d4fe0] to-[#6a5cf0] text-white text-xs font-extrabold px-3.5 py-2 rounded-btn flex items-center gap-1.5 shadow-md shadow-[#3d4fe0]/25 active:scale-95 transition cursor-pointer"
         >
           <Plus className="w-4 h-4 stroke-[2.5]" />
           <span>Add Property</span>
         </button>
       </header>
 
-      <main className="p-4 space-y-4 max-w-md mx-auto">
+      <main className="p-4 sm:p-5 space-y-4">
         {(error || actionError) && (
           <div
             role="alert"
-            className="bg-red-50 border border-red-200 text-red-700 p-3.5 rounded-2xl text-xs font-semibold break-words"
+            className="rounded-tile border border-rose/30 bg-rose/15 p-3.5 text-xs font-bold text-rose animate-fade-up break-words"
           >
             {actionError || error}
 
@@ -350,30 +352,32 @@ export default function Properties() {
           </div>
         )}
 
-        <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs space-y-3">
-          <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
-            Property List ({properties.length})
-          </h3>
+        <GlassCard className="animate-fade-up space-y-3.5">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-black text-ink dark:text-white uppercase tracking-wider">
+              Property List ({properties.length})
+            </h3>
+          </div>
 
           {loading ? (
-            <p className="text-xs text-slate-500 text-center py-8">
+            <div className="text-center py-8 text-xs font-semibold text-muted">
               Loading properties...
-            </p>
+            </div>
           ) : properties.length === 0 ? (
-            <div className="text-center py-8">
-              <Building2 className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-              <p className="text-xs font-bold text-slate-700">
+            <div className="text-center py-10 px-4 rounded-tile glass-panel">
+              <Building2 className="w-10 h-10 text-muted mx-auto mb-2 stroke-[1.5]" />
+              <p className="text-xs font-extrabold text-ink dark:text-white">
                 No properties added yet.
               </p>
               <button
                 onClick={() => setIsAddModalOpen(true)}
-                className="mt-3 px-4 py-2 bg-[#1e3a5f] text-white text-xs font-bold rounded-xl shadow-xs"
+                className="mt-3 px-4 py-2 rounded-btn bg-gradient-to-br from-[#3d4fe0] to-[#6a5cf0] text-white text-xs font-extrabold shadow-sm active:scale-95 transition cursor-pointer"
               >
                 + Add First Property
               </button>
             </div>
           ) : (
-            <div className="space-y-2.5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
               {properties.map((prop) => {
                 const propTenantsCount = tenants.filter(
                   (t) => t.propertyId === prop.id && t.status === 'active'
@@ -383,67 +387,67 @@ export default function Properties() {
                   <div
                     key={prop.id}
                     onClick={() => navigate(`/properties/${prop.id}`)}
-                    className="bg-slate-50/80 p-4 rounded-2xl border border-slate-200/60 hover:bg-slate-100/70 transition cursor-pointer active:scale-[0.99]"
+                    className="rounded-tile p-4 glass-panel-strong hover:bg-white dark:hover:bg-[#1c244c] transition-all duration-200 cursor-pointer active:scale-[0.99] group border border-white/90 dark:border-white/15"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-start gap-3.5 min-w-0">
-                        <div className="w-11 h-11 shrink-0 rounded-xl bg-[#1e3a5f]/10 border border-[#1e3a5f]/20 text-[#1e3a5f] flex items-center justify-center font-bold">
-                          <Building2 className="w-6 h-6" />
+                        <div className="w-11 h-11 shrink-0 rounded-tile bg-primary/15 text-primary dark:text-[#a5b4fc] border border-primary/25 flex items-center justify-center font-bold">
+                          <Building2 className="w-5 h-5 stroke-[2]" />
                         </div>
 
                         <div className="min-w-0">
-                          <h4 className="text-sm font-bold text-slate-900 break-words">
+                          <h4 className="text-sm font-extrabold text-ink dark:text-white group-hover:text-primary dark:group-hover:text-[#a5b4fc] transition break-words">
                             {prop.name}
                           </h4>
 
-                          <p className="text-xs text-slate-500 font-medium flex items-center gap-1.5 mt-0.5 flex-wrap">
+                          <p className="text-xs text-muted dark:text-[#94a3b8] font-semibold flex items-center gap-1.5 mt-0.5 flex-wrap">
                             <span>{prop.type}</span>
                             <span>•</span>
-                            <span className="text-[#1e3a5f] font-bold flex items-center gap-1">
-                              <Users className="w-3 h-3" />
+                            <span className="text-primary dark:text-[#a5b4fc] font-bold flex items-center gap-1">
+                              <Users className="w-3.5 h-3.5 stroke-[2]" />
                               {propTenantsCount} Tenants
                             </span>
                           </p>
 
                           {prop.address && (
-                            <p className="text-xs text-slate-500 flex items-start gap-1 mt-1.5 break-words">
-                              <MapPin className="w-3 h-3 shrink-0 mt-0.5" />
+                            <p className="text-xs text-muted dark:text-[#94a3b8] flex items-start gap-1 mt-1.5 break-words">
+                              <MapPin className="w-3.5 h-3.5 shrink-0 mt-0.5 stroke-[2]" />
                               <span>{prop.address}</span>
                             </p>
                           )}
 
                           <div className="flex items-center gap-2 mt-2 flex-wrap">
-                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md border bg-indigo-50 text-indigo-700 border-indigo-200">
-                              Post-Paid (Fixed) • Default Due Day {prop.dueDay || 10}
+                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-primary/15 text-primary dark:text-[#a5b4fc] border border-primary/25">
+                              Post-Paid • Due {prop.dueDay || 10}th
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      <ChevronRight className="w-4 h-4 text-slate-400 shrink-0 mt-1" />
+                      <ChevronRight className="w-4 h-4 text-muted group-hover:text-ink dark:group-hover:text-white shrink-0 mt-1 transition" />
                     </div>
 
                     <div
-                      className="flex gap-2 mt-4 pt-3 border-t border-slate-200/80"
+                      className="flex gap-2 mt-3.5 pt-3 border-t border-white/80 dark:border-white/10"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <button
                         type="button"
                         onClick={() => openEditModal(prop)}
-                        className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100 transition"
+                        className="flex-1 flex items-center justify-center gap-1.5 rounded-btn glass-panel px-3 py-2 text-xs font-extrabold text-primary dark:text-[#a5b4fc] hover:bg-primary/15 transition active:scale-95 cursor-pointer"
                       >
-                        <Pencil className="w-3.5 h-3.5" />
-                        Edit
+                        <Pencil className="w-3.5 h-3.5 stroke-[2]" />
+                        <span>Edit</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => handleDeleteProperty(prop)}
                         disabled={deletingId === prop.id}
-                        className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100 disabled:opacity-50 transition"
+                        className="flex-1 flex items-center justify-center gap-1.5 rounded-btn bg-rose/10 hover:bg-rose/20 text-rose border border-rose/20 px-3 py-2 text-xs font-extrabold transition active:scale-95 disabled:opacity-50 cursor-pointer"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        {deletingId === prop.id ? 'Deleting...' : 'Delete'}
+                        <Trash2 className="w-3.5 h-3.5 stroke-[2]" />
+                        <span>{deletingId === prop.id ? 'Deleting...' : 'Delete'}</span>
                       </button>
                     </div>
                   </div>
@@ -451,7 +455,7 @@ export default function Properties() {
               })}
             </div>
           )}
-        </div>
+        </GlassCard>
       </main>
 
       <AddPropertyModal
@@ -460,146 +464,127 @@ export default function Properties() {
         onPropertyAdded={handleAddPropertySuccess}
       />
 
-      {editingProperty && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-gray-100 p-5">
-              <div>
-                <h2 className="text-lg font-bold text-gray-900">
-                  Edit Property
-                </h2>
-                <p className="text-sm text-gray-500">
-                  Update your property details
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={closeEditModal}
-                disabled={savingEdit}
-                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 disabled:opacity-50"
-                aria-label="Close edit form"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <form onSubmit={handleEditProperty} className="space-y-5 p-5">
-              <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">
-                  Property Name *
-                </label>
-                <input
-                  type="text"
-                  value={editForm.name}
-                  onChange={(e) =>
-                    setEditForm((current) => ({
-                      ...current,
-                      name: e.target.value,
-                    }))
-                  }
-                  required
-                  className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">
-                  Property Address
-                </label>
-                <textarea
-                  value={editForm.address}
-                  onChange={(e) =>
-                    setEditForm((current) => ({
-                      ...current,
-                      address: e.target.value,
-                    }))
-                  }
-                  placeholder="Street, area, city, or full address"
-                  rows={2}
-                  className="w-full resize-y rounded-xl border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">
-                  Property Type *
-                </label>
-                <select
-                  value={editForm.type}
-                  onChange={(e) =>
-                    setEditForm((current) => ({
-                      ...current,
-                      type: e.target.value,
-                    }))
-                  }
-                  className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                >
-                  <option>Residential Flat / Apartment</option>
-                  <option>Independent House / Villa</option>
-                  <option>Commercial Shop / Office</option>
-                  <option>Hostel / PG Building</option>
-                </select>
-              </div>
-
-              <div className="flex items-center justify-between p-3.5 rounded-2xl border border-slate-200 bg-slate-50/80">
-                <div>
-                  <label className="block text-xs font-bold text-slate-800">
-                    Default Rent Due Day
-                  </label>
-                  <p className="text-[10px] text-slate-500 font-medium mt-0.5">
-                    Rent is due on this day in the following month (1–28)
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="number"
-                    min="1"
-                    max="28"
-                    value={editForm.dueDay}
-                    onChange={(e) =>
-                      setEditForm((current) => ({
-                        ...current,
-                        dueDay: e.target.value,
-                      }))
-                    }
-                    placeholder="10"
-                    required
-                    className="w-16 px-2.5 py-1.5 rounded-xl border border-gray-200 bg-white text-xs font-bold text-slate-900 text-center outline-none focus:border-blue-500"
-                  />
-                  <span className="text-xs text-slate-500 font-bold">th</span>
-                </div>
-              </div>
-
-              {actionError && (
-                <p className="rounded-lg bg-red-50 p-3 text-sm text-red-600 break-words">
-                  {actionError}
-                </p>
-              )}
-
-              <div className="flex gap-3 border-t border-gray-100 pt-4">
-                <button
-                  type="button"
-                  onClick={closeEditModal}
-                  disabled={savingEdit}
-                  className="flex-1 rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={savingEdit}
-                  className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                >
-                  <Save size={16} />
-                  {savingEdit ? 'Saving...' : 'Save Changes'}
-                </button>
-              </div>
-            </form>
+      {/* Edit Property BottomSheet */}
+      <BottomSheet
+        isOpen={!!editingProperty}
+        onClose={closeEditModal}
+        title="Edit Property"
+        subtitle={`Update details for ${editingProperty?.name || 'Property'}`}
+      >
+        <form onSubmit={handleEditProperty} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-ink dark:text-white mb-1">
+              Property Name *
+            </label>
+            <input
+              type="text"
+              value={editForm.name}
+              onChange={(e) =>
+                setEditForm((current) => ({
+                  ...current,
+                  name: e.target.value,
+                }))
+              }
+              required
+              className="w-full px-3.5 py-2.5 rounded-[16px] glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-semibold text-ink dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 transition"
+            />
           </div>
-        </div>
-      )}
+
+          <div>
+            <label className="block text-xs font-bold text-ink dark:text-white mb-1">
+              Property Address
+            </label>
+            <textarea
+              value={editForm.address}
+              onChange={(e) =>
+                setEditForm((current) => ({
+                  ...current,
+                  address: e.target.value,
+                }))
+              }
+              placeholder="Street, area, city, or full address"
+              rows={2}
+              className="w-full px-3.5 py-2.5 rounded-[16px] glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-semibold text-ink dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 transition resize-y"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-ink dark:text-white mb-1">
+              Property Type *
+            </label>
+            <select
+              value={editForm.type}
+              onChange={(e) =>
+                setEditForm((current) => ({
+                  ...current,
+                  type: e.target.value,
+                }))
+              }
+              className="w-full px-3.5 py-2.5 rounded-[16px] glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-semibold text-ink dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 transition"
+            >
+              <option>Residential Flat / Apartment</option>
+              <option>Independent House / Villa</option>
+              <option>Commercial Shop / Office</option>
+              <option>Hostel / PG Building</option>
+            </select>
+          </div>
+
+          <div className="flex items-center justify-between p-3.5 rounded-tile glass-panel border border-white/80 dark:border-white/10">
+            <div>
+              <label className="block text-xs font-bold text-ink dark:text-white">
+                Default Rent Due Day
+              </label>
+              <p className="text-[10px] text-muted dark:text-[#98a3c4] font-medium mt-0.5">
+                Due on this day in following month (1–28)
+              </p>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="number"
+                min="1"
+                max="28"
+                value={editForm.dueDay}
+                onChange={(e) =>
+                  setEditForm((current) => ({
+                    ...current,
+                    dueDay: e.target.value,
+                  }))
+                }
+                placeholder="10"
+                required
+                className="w-16 px-2.5 py-1.5 rounded-btn glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-extrabold text-ink dark:text-white text-center focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <span className="text-xs text-muted font-bold">th</span>
+            </div>
+          </div>
+
+          {actionError && (
+            <div className="p-3 rounded-btn bg-rose/15 border border-rose/30 text-rose text-xs font-bold">
+              {actionError}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-2.5 pt-2">
+            <button
+              type="button"
+              onClick={closeEditModal}
+              disabled={savingEdit}
+              className="py-3 px-3 rounded-btn glass-panel text-muted hover:text-ink dark:hover:text-white font-bold text-xs active:scale-95 transition disabled:opacity-50 cursor-pointer"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="submit"
+              disabled={savingEdit}
+              className="py-3 px-3 rounded-btn bg-gradient-to-br from-[#3d4fe0] to-[#6a5cf0] text-white font-extrabold text-xs shadow-md shadow-[#3d4fe0]/25 active:scale-95 transition disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <Save className="w-4 h-4 stroke-[2.5]" />
+              <span>{savingEdit ? 'Saving...' : 'Save Changes'}</span>
+            </button>
+          </div>
+        </form>
+      </BottomSheet>
     </div>
   );
 }

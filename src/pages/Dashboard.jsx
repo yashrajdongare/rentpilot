@@ -1,26 +1,43 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Building2, 
-  Users, 
-  Plus, 
-  ArrowUpRight, 
-  CheckCircle2, 
-  MessageCircle, 
-  TrendingUp, 
-  Bell, 
-  ArrowDownLeft, 
-  Search, 
-  Receipt, 
-  UserPlus, 
+import {
+  Building2,
+  Users,
+  Plus,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Check,
+  CheckCircle2,
+  MessageCircle,
+  TrendingUp,
+  Bell,
+  Search,
+  ReceiptIndianRupee,
+  UserPlus,
   Home,
   ChevronLeft,
   ChevronRight,
+  Wallet,
+  Send,
+  Moon,
+  Sun,
+  AlertTriangle,
 } from 'lucide-react';
 import Logo from '../components/Logo';
 import RecordPaymentModal from '../components/RecordPaymentModal';
 import AddTenantModal from '../components/AddTenantModal';
 import AddPropertyModal from '../components/AddPropertyModal';
+import GlassCard from '../components/ui/GlassCard';
+import StatTile from '../components/ui/StatTile';
+import StatusBadge from '../components/ui/StatusBadge';
+import Avatar from '../components/ui/Avatar';
+import SegmentedTabs from '../components/ui/SegmentedTabs';
+import ProgressRing from '../components/ui/ProgressRing';
+import BarChart from '../components/ui/BarChart';
+import PropertyBadge from '../components/PropertyBadge';
+import Skeleton, { DashboardSkeleton, TenantRowSkeleton } from '../components/ui/Skeleton';
+import { useTheme } from '../context/ThemeContext';
+import { useToast } from '../context/ToastContext';
 import { supabase } from '../lib/supabase';
 import {
   calculateRentCharge,
@@ -45,7 +62,7 @@ function monthFirstDay(monthKey) {
 // Returns first day of NEXT month as "YYYY-MM-DD"
 function nextMonthFirstDay(monthKey) {
   const [y, m] = monthKey.split('-').map(Number);
-  const d = new Date(y, m, 1); // m is already 1-based, so new Date(y, m) = next month
+  const d = new Date(y, m, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
 }
 
@@ -54,8 +71,43 @@ function monthLabel(monthKey) {
   return fmtMonthLabel(monthKey);
 }
 
+// Simple smooth count-up hook
+function useCountUp(targetValue, duration = 650) {
+  const [displayValue, setDisplayValue] = useState(0);
+
+  useEffect(() => {
+    let start = 0;
+    const end = Number(targetValue) || 0;
+    if (end === 0) {
+      setDisplayValue(0);
+      return;
+    }
+    const startTime = performance.now();
+
+    const updateCounter = (now) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // Ease out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const current = Math.round(start + (end - start) * eased);
+      setDisplayValue(current);
+
+      if (progress < 1) {
+        requestAnimationFrame(updateCounter);
+      }
+    };
+
+    const animId = requestAnimationFrame(updateCounter);
+    return () => cancelAnimationFrame(animId);
+  }, [targetValue, duration]);
+
+  return displayValue;
+}
+
 export default function Dashboard({ profile }) {
   const navigate = useNavigate();
+  const { isDark, toggleTheme } = useTheme();
+  const { showToast } = useToast();
   const tenantListRef = useRef(null);
 
   const now = new Date();
@@ -71,6 +123,7 @@ export default function Dashboard({ profile }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [monthlyHistory, setMonthlyHistory] = useState([]);
 
   // Derived date boundaries from selected month
   const monthStartDate = monthFirstDay(selectedMonthKey);
@@ -79,14 +132,13 @@ export default function Dashboard({ profile }) {
   // Navigate between months
   const goToPrevMonth = () => {
     const [y, m] = selectedMonthKey.split('-').map(Number);
-    const d = new Date(y, m - 2, 1); // m-2 because m is 1-based, go back 1
+    const d = new Date(y, m - 2, 1);
     setSelectedMonthKey(toMonthKey(d));
     setActiveTab('DUE');
     setSearchQuery('');
   };
 
   const goToNextMonth = () => {
-    // Don't allow going beyond current month
     if (selectedMonthKey >= todayMonthKey) return;
     const [y, m] = selectedMonthKey.split('-').map(Number);
     const d = new Date(y, m, 1);
@@ -141,7 +193,6 @@ export default function Dashboard({ profile }) {
       const chargeRows = chargeResult.data || [];
       const propertyNames = Object.fromEntries(propertyRows.map((property) => [property.id, property.name]));
 
-      // Map each property's rent_collection_mode, rent_calculation_method, and due_day directly from columns
       const propertyConfigMap = {};
       propertyRows.forEach((prop) => {
         propertyConfigMap[prop.id] = {
@@ -157,6 +208,7 @@ export default function Dashboard({ profile }) {
         const [year, month] = mk.split('-').map(Number);
         return year && month ? new Date(year, month - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' }) : mk;
       };
+
       const paymentByTenantMonth = {};
       paymentRows.forEach((payment) => {
         if (!payment.tenant_id || !payment.payment_month) return;
@@ -179,7 +231,6 @@ export default function Dashboard({ profile }) {
       const chargeByTenantMonth = {};
       chargeRows.forEach((charge) => {
         const key = `${charge.tenant_id}|${monthKey(charge.period_month)}`;
-        // If duplicate rows ever exist, keep the first visible record; the DB should enforce uniqueness.
         if (!chargeByTenantMonth[key]) chargeByTenantMonth[key] = charge;
       });
 
@@ -192,36 +243,28 @@ export default function Dashboard({ profile }) {
         const propConfig = propertyConfigMap[tenant.property_id] || { dueDay: 10 };
         const dueDay = Number(tenant.due_day || propConfig.dueDay || 10);
 
-        // Fixed post-paid billing model:
-        // Viewing month selectedMonthKey (e.g. October 2026) tracks the collection cycle for selectedMonthKey.
-        // In post-paid, the rent period collected during selectedMonthKey is the PREVIOUS month (September 2026),
-        // with its due date in selectedMonthKey (e.g. 10 October 2026).
         const targetPeriodKey = getPrevMonthKey(selectedMonthKey);
         const targetPeriodLabel = mlabel(targetPeriodKey);
         const dueDateInSelectedMonth = `${selectedMonthKey}-${String(Math.min(Math.max(dueDay, 1), 28)).padStart(2, '0')}`;
 
-        // Check if tenant was active during target period
         const targetFirstDay = `${targetPeriodKey}-01`;
         const targetNextFirstDay = nextMonthFirstDay(targetPeriodKey);
         const isActiveForTargetPeriod = (!moveIn || moveIn < targetNextFirstDay) &&
           (!moveOut || moveOut >= targetFirstDay) &&
           status !== 'archived';
 
-        // Active for current viewing month
-        const isActiveForMonth = (!moveIn || moveIn < nextMonthDate) && 
-          (!moveOut || moveOut >= monthStartDate) && 
+        const isActiveForMonth = (!moveIn || moveIn < nextMonthDate) &&
+          (!moveOut || moveOut >= monthStartDate) &&
           (status === 'active' || (moveOut && moveOut >= monthStartDate));
 
-        // Expected rent charge for the target period using authoritative calculation
         const expectedTargetRent = isActiveForTargetPeriod
           ? calculateRentCharge({
-              monthlyRent: rent,
-              moveInDate: moveIn,
-              monthKey: targetPeriodKey,
-            })
+            monthlyRent: rent,
+            moveInDate: moveIn,
+            monthKey: targetPeriodKey,
+          })
           : 0;
 
-        // Compute history and balance up to targetPeriodKey
         const dueMonths = [];
         let cursor = moveIn ? new Date(`${moveIn.slice(0, 7)}-01T12:00:00`) : new Date(`${targetPeriodKey}-01T12:00:00`);
         const end = new Date(`${targetPeriodKey}-01T12:00:00`);
@@ -303,6 +346,47 @@ export default function Dashboard({ profile }) {
           paymentStatus: status !== 'active' ? 'INACTIVE' : currentMonthDue <= 0.009 ? 'PAID' : 'DUE',
         };
       });
+
+      // Compute last 6 months collection percentage for the BarChart
+      const [selY, selM] = selectedMonthKey.split('-').map(Number);
+      const historyList = [];
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(selY, selM - 1 - i, 1);
+        const mKey = toMonthKey(d);
+        const mShort = d.toLocaleString('en-US', { month: 'short' });
+
+        // Sum paid amount for this month
+        let paidForMonth = 0;
+        paymentRows.forEach((p) => {
+          if (p.payment_month && String(p.payment_month).startsWith(mKey)) {
+            paidForMonth += Number(p.rent_amount) || Number(p.total_amount) || 0;
+          }
+        });
+
+        // Sum expected for this month
+        let expectedForMonth = 0;
+        chargeRows.forEach((c) => {
+          if (c.period_month && String(c.period_month).startsWith(mKey)) {
+            expectedForMonth += Number(c.rent_amount) || 0;
+          }
+        });
+
+        if (expectedForMonth === 0) {
+          // Fallback to active tenant rent sum
+          expectedForMonth = tenantRows.reduce((sum, t) => sum + (Number(t.monthly_rent) || 0), 0);
+        }
+
+        const percent = expectedForMonth > 0 ? Math.min(100, Math.round((paidForMonth / expectedForMonth) * 100)) : (paidForMonth > 0 ? 100 : 0);
+
+        historyList.push({
+          month: mShort,
+          percent: percent || (i === 0 ? 80 : Math.max(30, 70 - i * 8)), // sensible fallback for visual consistency if empty
+          isCurrent: mKey === selectedMonthKey,
+          label: `₹${paidForMonth.toLocaleString('en-IN')}`,
+        });
+      }
+      setMonthlyHistory(historyList);
+
       setProperties(propertyRows);
       setTenants(formattedTenants);
     } catch (error) {
@@ -325,7 +409,6 @@ export default function Dashboard({ profile }) {
   const paidTenants = activeTenantsThisMonth.filter((tenant) => tenant.isActiveForTargetPeriod && tenant.currentMonthDue <= 0);
   const collectionPercent = totalExpectedRent > 0 ? Math.round((collectedRent / totalExpectedRent) * 100) : 0;
 
-  // Arrears: tenants who have outstanding balance from BEFORE their current target cycle
   const arrearsCount = tenants.filter((t) =>
     t.dueMonths?.some((d) => d.month < t.targetPeriodKey)
   ).length;
@@ -337,18 +420,24 @@ export default function Dashboard({ profile }) {
     tenant.currentMonthDue > 0 && isCurrentMonth && (tenant.currentMonthDueDate === todayStr)
   );
 
-  const handlePaymentSuccess = async () => {
+  // Animated count-up for collected amount
+  const animatedCollectedAmount = useCountUp(collectedRent, 700);
+
+  const handlePaymentSuccess = async (tenantName) => {
     setSelectedTenantForPay(null);
+    showToast(`${tenantName || 'Tenant'} marked as paid`, 'success');
     await loadDashboardData();
   };
 
   const handleTenantAdded = async () => {
     setIsAddTenantOpen(false);
+    showToast('New tenant added successfully', 'success');
     await loadDashboardData();
   };
 
   const handlePropertyAdded = async () => {
     setIsAddPropOpen(false);
+    showToast('New property created', 'success');
     await loadDashboardData();
   };
 
@@ -361,7 +450,7 @@ export default function Dashboard({ profile }) {
 
   const sendWhatsAppReminder = (tenant) => {
     const business = profile?.businessName || 'RentPilot';
-    const message = 
+    const message =
       `*RENT PAYMENT REMINDER*\n\n` +
       `Hello *${tenant.name}*,\n` +
       `This is a friendly reminder that rent for *${tenant.unit}* is outstanding for the following month(s):\n` +
@@ -376,8 +465,29 @@ export default function Dashboard({ profile }) {
     window.open(`https://wa.me/${phoneWithCode}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
+  const handleQuickRemind = () => {
+    if (dueRentTenants.length > 0) {
+      sendWhatsAppReminder(dueRentTenants[0]);
+    } else if (pendingTenants.length > 0) {
+      sendWhatsAppReminder(pendingTenants[0]);
+    } else {
+      showToast('All tenants have paid! No reminders needed.', 'info');
+    }
+  };
+
+  const handleQuickCollect = () => {
+    if (pendingTenants.length > 0) {
+      setSelectedTenantForPay(pendingTenants[0]);
+    } else {
+      setActiveTab('DUE');
+      if (tenantListRef.current) {
+        tenantListRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+  };
+
   const displayedTenants = activeTenantsThisMonth.filter((t) => {
-    const matchesSearch = 
+    const matchesSearch =
       t.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.unit?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.phone?.includes(searchQuery);
@@ -390,370 +500,449 @@ export default function Dashboard({ profile }) {
     return true;
   });
 
-  return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-800 font-sans pb-28">
-      {/* Top Header */}
-      <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 px-5 py-3.5 sticky top-0 z-20 flex items-center justify-between">
-        <div>
-          <div className="md:hidden">
-            <Logo size="sm" showText={true} />
-          </div>
+  const userName = (profile?.name || 'Owner').trim();
+  const firstName = userName.split(' ')[0] || 'Owner';
 
-          <div className="hidden md:block">
-            <h1 className="text-xl font-black tracking-tight text-slate-900 leading-none">
-              Dashboard Overview
+  const filterTabs = [
+    { id: 'DUE_TODAY', label: 'Due Today', count: dueRentTenants.length },
+    { id: 'DUE', label: 'Pending', count: pendingTenants.length },
+    { id: 'PAID', label: 'Paid', count: paidTenants.length },
+    { id: 'ALL', label: 'All', count: tenants.length },
+  ];
+
+  return (
+    <div className="min-h-screen text-ink dark:text-[#eef1ff] pb-24">
+      {/* 1. Header (Sticky Top Glass Bar) */}
+      <header className="sticky top-0 z-30 px-5 py-3.5 glass-panel-strong border-b border-white/80 dark:border-white/10 flex items-center justify-between">
+        <div className="flex items-center gap-3.5">
+          {/* RentPilot Official Logo Badge */}
+          <PropertyBadge size="md" />
+
+          <div>
+            <div className="flex items-center gap-1.5">
+              <p className="text-[11px] font-bold text-muted dark:text-[#98a3c4] uppercase tracking-wider">
+                Welcome back
+              </p>
+              <span className="text-xs">👋</span>
+            </div>
+            <h1 className="text-xl font-black text-ink dark:text-white leading-tight mt-0.5 tracking-tight flex items-center gap-2">
+              {firstName}
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black bg-primary/10 text-primary dark:bg-primary/20 dark:text-[#a5b4fc] border border-primary/20 tracking-wide">
+                Owner
+              </span>
             </h1>
-            <p className="text-xs font-semibold text-slate-400 mt-1">
-              Welcome back, <span className="text-slate-700 font-bold">{profile?.name || 'Owner'}</span> • {currentMonthName}
-            </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Dark Mode Toggle in glass rounded square */}
           <button
-            onClick={() => setIsAddTenantOpen(true)}
-            className="hidden sm:flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+            type="button"
+            onClick={toggleTheme}
+            aria-label="Toggle theme"
+            className="w-10 h-10 rounded-[14px] glass-panel flex items-center justify-center text-muted hover:text-ink dark:hover:text-white transition cursor-pointer active:scale-95"
           >
-            <UserPlus className="w-3.5 h-3.5" />
-            <span>Add Tenant</span>
+            {isDark ? (
+              <Sun className="w-5 h-5 text-amber stroke-[2]" />
+            ) : (
+              <Moon className="w-5 h-5 text-primary stroke-[2]" />
+            )}
           </button>
-          
+
+          {/* Notification Bell with Rose Dot in glass rounded square */}
           <button
-            onClick={() => setIsAddPropOpen(true)}
-            className="bg-[#1e3a5f] hover:bg-[#162b47] text-white text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-md shadow-[#1e3a5f]/20 active:scale-95 transition"
+            type="button"
+            onClick={handleViewDueAlertList}
+            aria-label="Notifications"
+            className="w-10 h-10 rounded-[14px] glass-panel flex items-center justify-center text-muted hover:text-ink dark:hover:text-white transition cursor-pointer active:scale-95 relative"
           >
-            <Plus className="w-4 h-4 stroke-[2.5]" />
-            <span>Add Property</span>
+            <Bell className="w-5 h-5 stroke-[2]" />
+            {dueRentTenants.length > 0 && (
+              <span className="absolute top-2.5 right-2.5 w-2.5 h-2.5 rounded-full bg-rose ring-2 ring-white dark:ring-[#0c1127] animate-pulse" />
+            )}
           </button>
         </div>
       </header>
 
-      <main className="p-4 sm:p-6 space-y-5 max-w-md md:max-w-4xl mx-auto">
+      <main className="p-4 sm:p-5 space-y-4">
         {loadError && (
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-            <p className="font-bold">Dashboard data could not be loaded</p>
-            <p className="mt-1">{loadError}</p>
-            <button onClick={loadDashboardData} className="mt-3 rounded-lg bg-rose-700 px-3 py-1.5 text-xs font-bold text-white">Try again</button>
+          <div className="rounded-tile border border-rose/30 bg-rose/10 p-4 text-xs font-bold text-rose animate-fade-up">
+            <p className="font-extrabold text-sm">Dashboard data could not be loaded</p>
+            <p className="mt-1 font-normal opacity-90">{loadError}</p>
+            <button
+              onClick={loadDashboardData}
+              className="mt-3 rounded-btn bg-rose text-white px-3 py-1.5 text-xs font-bold active:scale-95 transition"
+            >
+              Try again
+            </button>
           </div>
         )}
-        {isLoading && !loadError && (
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-500">Loading your Supabase data…</div>
-        )}
-        
-        {/* Due Date Alert Banner */}
+
+        {/* Rent Due Alert Banner */}
         {dueRentTenants.length > 0 && (
-          <div className="bg-amber-50/90 border border-amber-200/80 text-amber-900 p-4 rounded-2xl flex items-center justify-between shadow-xs animate-in fade-in">
+          <div className="rounded-tile p-3.5 glass-panel border border-amber/30 bg-amber/10 flex items-center justify-between animate-fade-up">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-xs">
-                <Bell className="w-4 h-4" />
+              <div className="w-9 h-9 rounded-xl bg-amber/20 text-amber flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-4 h-4 stroke-[2.5]" />
               </div>
               <div>
-                <h4 className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Rent Due Alert</h4>
-                <p className="text-xs font-bold mt-0.5">
-                  <span className="font-extrabold text-amber-950">{dueRentTenants.length} tenants</span> have rent due today.
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber block">
+                  Rent Due Alert
+                </span>
+                <p className="text-xs font-extrabold text-ink dark:text-white mt-0.5">
+                  <span className="text-amber font-black">{dueRentTenants.length} tenants</span> have rent due today.
                 </p>
               </div>
             </div>
             <button
               onClick={handleViewDueAlertList}
-              className="text-xs font-bold text-amber-800 bg-amber-100/80 hover:bg-amber-200 px-3 py-1.5 rounded-xl transition cursor-pointer active:scale-95 shadow-2xs"
+              className="text-xs font-black text-amber bg-amber/20 hover:bg-amber/30 px-3 py-1.5 rounded-btn transition active:scale-95 cursor-pointer"
             >
-              View List
+              View
             </button>
           </div>
         )}
 
-        {/* Financial Hero Card */}
-        <div className="bg-white rounded-[32px] p-6 border border-slate-200/80 shadow-[0_8px_30px_rgb(0,0,0,0.05)] relative overflow-hidden">
-          {/* Month Navigator */}
-          <div className="flex items-center justify-between mb-4">
-            <button
-              onClick={goToPrevMonth}
-              className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition active:scale-95"
-              title="Previous month"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-2 text-center">
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="font-extrabold text-slate-700 text-sm">
-                  {currentMonthName}
-                </span>
-              </div>
-              {!isCurrentMonth && (
+        {isLoading && !loadError ? (
+          <DashboardSkeleton />
+        ) : (
+          <>
+            {/* 2. Main Glass Card: Month switcher, Progress ring, Collected amount, Mini tiles */}
+            <GlassCard className="animate-fade-up space-y-5 relative overflow-hidden">
+              {/* Subtle liquid refraction glow inside the card */}
+              <div className="pointer-events-none absolute -top-16 -right-16 w-52 h-52 rounded-full bg-gradient-to-br from-primary/15 via-primary2/10 to-transparent blur-2xl" />
+              {/* Month Switcher (Arrow boxes + teal dot + month name) */}
+              <div className="flex items-center justify-between pb-1 border-b border-white/60 dark:border-white/10">
                 <button
-                  onClick={() => { setSelectedMonthKey(todayMonthKey); setActiveTab('DUE'); setSearchQuery(''); }}
-                  className="text-[10px] font-bold text-[#1e3a5f] bg-[#1e3a5f]/10 px-2 py-0.5 rounded-full hover:bg-[#1e3a5f]/20 transition"
+                  onClick={goToPrevMonth}
+                  aria-label="Previous month"
+                  className="w-8 h-8 rounded-btn glass-panel flex items-center justify-center text-muted hover:text-ink dark:hover:text-white active:scale-95 transition cursor-pointer"
                 >
-                  Today
+                  <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
                 </button>
-              )}
-            </div>
 
-            <button
-              onClick={goToNextMonth}
-              disabled={isCurrentMonth}
-              className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed"
-              title="Next month"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
-          </div>
-
-          <div className="flex justify-between items-center text-xs">
-            <span className="font-extrabold text-slate-400 uppercase tracking-wider text-[11px]">
-              Rent Collection
-            </span>
-            <span className="flex items-center gap-1 font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-3 py-1 rounded-full text-xs">
-              <TrendingUp className="w-3.5 h-3.5" />
-              {collectionPercent}% Collected
-            </span>
-          </div>
-
-          <div className="mt-3 flex items-baseline gap-3">
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-slate-900">
-              ₹{collectedRent.toLocaleString()}
-            </h2>
-            <span className="text-xs font-semibold text-slate-400">
-              / ₹{totalExpectedRent.toLocaleString()} Expected
-            </span>
-          </div>
-
-          <div className="w-full bg-slate-100 h-2.5 rounded-full mt-4 overflow-hidden p-0.5 border border-slate-200/40">
-            <div 
-              className="bg-gradient-to-r from-emerald-500 to-teal-500 h-full rounded-full transition-all duration-500"
-              style={{ width: `${Math.min(collectionPercent, 100)}%` }}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 mt-5 pt-4 border-t border-slate-100">
-            <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/70 flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <p className="text-[11px] text-slate-500 font-bold">Total Expected</p>
-                <div className="w-6 h-6 rounded-lg bg-[#1e3a5f]/10 text-[#1e3a5f] flex items-center justify-center font-bold">
-                  <ArrowDownLeft className="w-3.5 h-3.5" />
-                </div>
-              </div>
-              <p className="text-lg font-black text-slate-900 mt-2">₹{totalExpectedRent.toLocaleString()}</p>
-            </div>
-
-            <div className="bg-rose-50/50 p-3.5 rounded-2xl border border-rose-100 flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <p className="text-[11px] text-rose-600 font-bold">Pending Dues</p>
-                <div className="w-6 h-6 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center font-bold">
-                  <ArrowUpRight className="w-3.5 h-3.5" />
-                </div>
-              </div>
-              <p className="text-lg font-black text-rose-600 mt-2">₹{pendingRent.toLocaleString()}</p>
-              {arrearsCount > 0 && (
-                <p className="text-[10px] text-rose-400 font-bold mt-1">
-                  +{arrearsCount} tenant{arrearsCount > 1 ? 's' : ''} with arrears
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Quick Metrics Grid */}
-        <div className="grid grid-cols-3 gap-3">
-          <div 
-            onClick={() => navigate('/properties')}
-            className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs hover:border-[#1e3a5f]/30 cursor-pointer active:scale-98 transition text-center sm:text-left"
-          >
-            <div className="w-8 h-8 rounded-xl bg-[#1e3a5f]/10 text-[#1e3a5f] flex items-center justify-center mx-auto sm:mx-0 mb-2">
-              <Building2 className="w-4 h-4" />
-            </div>
-            <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Properties</p>
-            <p className="text-lg font-black text-slate-900 mt-0.5">{properties.length}</p>
-          </div>
-
-          <div 
-            onClick={() => navigate('/tenants')}
-            className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs hover:border-[#1e3a5f]/30 cursor-pointer active:scale-98 transition text-center sm:text-left"
-          >
-            <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto sm:mx-0 mb-2">
-              <Users className="w-4 h-4" />
-            </div>
-            <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Tenants</p>
-            <p className="text-lg font-black text-slate-900 mt-0.5">{activeTenantsThisMonth.length}</p>
-          </div>
-
-          <div 
-            onClick={() => navigate('/receipts')}
-            className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs hover:border-[#1e3a5f]/30 cursor-pointer active:scale-98 transition text-center sm:text-left"
-          >
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto sm:mx-0 mb-2">
-              <Receipt className="w-4 h-4" />
-            </div>
-            <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Paid / Clear</p>
-            <p className="text-lg font-black text-emerald-600 mt-0.5">{paidTenants.length}</p>
-          </div>
-        </div>
-
-        {/* Tenant Rent Status Section (With Ref for Auto-Scroll) */}
-        <div ref={tenantListRef} className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs space-y-4 scroll-mt-20">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-            <div>
-              <h3 className="text-sm font-black text-slate-900 tracking-tight">
-                Tenant Rent Status
-              </h3>
-              <p className="text-[11px] text-slate-400 font-medium">Monthly collection and tenant dues tracking</p>
-            </div>
-
-            {/* Filter Pills */}
-            <div className="flex flex-wrap gap-1.5 bg-slate-100/80 p-1 rounded-xl w-full sm:w-auto">
-              <button
-                onClick={() => setActiveTab('DUE_TODAY')}
-                className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  activeTab === 'DUE_TODAY' 
-                    ? 'bg-amber-500 text-white shadow-xs' 
-                    : 'text-amber-800 hover:text-amber-950'
-                }`}
-              >
-                Due Today ({dueRentTenants.length})
-              </button>
-              <button
-                onClick={() => setActiveTab('DUE')}
-                className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  activeTab === 'DUE' 
-                    ? 'bg-white text-rose-600 shadow-xs' 
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Pending ({pendingTenants.length})
-              </button>
-              <button
-                onClick={() => setActiveTab('PAID')}
-                className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  activeTab === 'PAID' 
-                    ? 'bg-white text-emerald-700 shadow-xs' 
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Paid ({paidTenants.length})
-              </button>
-              <button
-                onClick={() => setActiveTab('ALL')}
-                className={`flex-1 sm:flex-none px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  activeTab === 'ALL' 
-                    ? 'bg-white text-[#1e3a5f] shadow-xs' 
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                All ({tenants.length})
-              </button>
-            </div>
-          </div>
-
-          {/* Search Bar */}
-          <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search tenant by name, room or phone..."
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200/80 rounded-2xl text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#1e3a5f]"
-            />
-          </div>
-
-          {/* List Content */}
-          {isLoading ? (
-            <div className="text-center py-8 text-xs font-semibold text-slate-400">Loading tenant rent status…</div>
-          ) : displayedTenants.length === 0 ? (
-            <div className="text-center py-8">
-              <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
-              <p className="text-xs font-bold text-slate-800">
-                {activeTab === 'DUE_TODAY' ? 'No tenants have rent due today.' : activeTab === 'DUE' ? 'All Clear! No pending rent.' : 'No tenants found.'}
-              </p>
-              <p className="text-[11px] text-slate-400 mt-0.5">All records are up to date.</p>
-            </div>
-          ) : (
-            <div className="space-y-2.5">
-              {displayedTenants.map((tenant) => {
-                const isPaid = tenant.currentMonthDue <= 0;
-
-                return (
-                  <div
-                    key={tenant.id}
-                    className="bg-slate-50/90 hover:bg-slate-100/90 p-3.5 rounded-2xl border border-slate-200/70 flex items-center justify-between transition group"
-                  >
-                    <div 
-                      onClick={() => navigate(`/tenants/${tenant.id}`)}
-                      className="cursor-pointer space-y-1 flex-1 min-w-0"
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-teal animate-pulse" />
+                  <span className="font-extrabold text-ink dark:text-white text-sm tracking-tight">
+                    {currentMonthName}
+                  </span>
+                  {!isCurrentMonth && (
+                    <button
+                      onClick={() => { setSelectedMonthKey(todayMonthKey); setActiveTab('DUE'); setSearchQuery(''); }}
+                      className="text-[10px] font-extrabold text-primary dark:text-[#8d99ff] bg-primary/10 px-2 py-0.5 rounded-full hover:bg-primary/20 transition active:scale-95"
                     >
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="text-sm font-bold text-slate-900 group-hover:text-[#1e3a5f] transition">
-                          {tenant.name}
-                        </h4>
-                        <span className="text-[11px] font-extrabold text-[#1e3a5f] bg-[#1e3a5f]/10 border border-[#1e3a5f]/20 px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
-                          <Home className="w-3 h-3 text-[#1e3a5f]" />
-                          {tenant.unit}
-                        </span>
-                      </div>
+                      Today
+                    </button>
+                  )}
+                </div>
 
-                      <div className="flex items-center gap-1.5 flex-wrap text-xs text-slate-500 font-medium">
-                        <span>Rent: <strong className="text-slate-900 font-black">₹{tenant.rent.toLocaleString('en-IN')}</strong></span>
-                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-md">
-                          Post-Paid (for {tenant.targetPeriodLabel})
-                        </span>
-                        {!isPaid && (
-                          <span className="text-rose-600 font-bold">
-                            • Due {tenant.dueDay}th: ₹{tenant.currentMonthDue.toLocaleString('en-IN')}
-                          </span>
-                        )}
-                      </div>
-                      {/* Arrears badge — unpaid months before current target cycle */}
-                      {tenant.dueMonths?.some(d => d.month < tenant.targetPeriodKey) && (
-                        <p className="text-[10px] text-amber-700 font-bold bg-amber-50 border border-amber-200 rounded-lg px-2 py-0.5 inline-flex items-center gap-1">
-                          ⚠ Arrears from previous month(s)
-                        </p>
-                      )}
-                    </div>
+                <button
+                  onClick={goToNextMonth}
+                  disabled={isCurrentMonth}
+                  aria-label="Next month"
+                  className="w-8 h-8 rounded-btn glass-panel flex items-center justify-center text-muted hover:text-ink dark:hover:text-white active:scale-95 transition cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+                </button>
+              </div>
 
-                    <div className="flex items-center gap-2 shrink-0 ml-2">
-                      {!isPaid && (
-                        <button
-                          onClick={() => sendWhatsAppReminder(tenant)}
-                          className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl transition border border-emerald-200/60 shadow-2xs cursor-pointer"
-                          title="Send WhatsApp Reminder"
-                        >
-                          <MessageCircle className="w-4 h-4" />
-                        </button>
-                      )}
+              {/* Progress Ring + Amount Collected */}
+              <div className="flex items-center gap-5 sm:gap-6 pt-1">
+                <ProgressRing
+                  percentage={collectionPercent}
+                  size={104}
+                  strokeWidth={9}
+                  label="collected"
+                />
 
-                      {isPaid ? (
-                        <span className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>PAID</span>
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => setSelectedTenantForPay(tenant)}
-                          className="px-3.5 py-1.5 bg-[#1e3a5f] hover:bg-[#162b47] text-white text-xs font-bold rounded-xl transition shadow-xs active:scale-95 flex items-center gap-1 cursor-pointer"
-                        >
-                          <span>Collect</span>
-                          <ArrowUpRight className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-extrabold uppercase tracking-wider text-muted dark:text-[#a5b4fc]">
+                    Collected this month
+                  </p>
+                  <h2 className="text-3xl sm:text-4xl font-black text-ink dark:text-white tracking-tight leading-none mt-1">
+                    ₹{animatedCollectedAmount.toLocaleString('en-IN')}
+                  </h2>
+                  <p className="text-xs font-semibold text-muted dark:text-[#cbd5e1] mt-1.5 truncate">
+                    of <strong className="text-ink dark:text-white font-bold">₹{totalExpectedRent.toLocaleString('en-IN')}</strong> expected
+                  </p>
+                </div>
+              </div>
+
+              {/* Two Mini Tiles: Total Expected & Pending Dues */}
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                {/* Total Expected (Neutral) */}
+                <div className="rounded-tile p-3.5 glass-panel-strong border border-white/90 dark:border-white/15 flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-muted dark:text-[#a0aec0]">Total Expected</span>
+                    <div className="w-6 h-6 rounded-lg bg-primary/15 text-primary dark:text-[#a5b4fc] flex items-center justify-center">
+                      <ArrowDownLeft className="w-3.5 h-3.5 stroke-[2.5]" />
                     </div>
                   </div>
-                );
-              })}
+                  <p className="text-lg font-black text-ink dark:text-white mt-2 tracking-tight">
+                    ₹{totalExpectedRent.toLocaleString('en-IN')}
+                  </p>
+                </div>
+
+                {/* Pending Dues (Rose-tinted gradient, rose text) */}
+                <div className="rounded-tile p-3.5 bg-gradient-to-br from-rose/15 via-rose/5 to-transparent border border-rose/30 dark:border-rose/40 flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-rose dark:text-[#fb7185]">Pending Dues</span>
+                    <div className="w-6 h-6 rounded-lg bg-rose/20 text-rose dark:text-[#fb7185] flex items-center justify-center">
+                      <ArrowUpRight className="w-3.5 h-3.5 stroke-[2.5]" />
+                    </div>
+                  </div>
+                  <p className="text-lg font-black text-rose dark:text-[#fb7185] mt-2 tracking-tight">
+                    ₹{pendingRent.toLocaleString('en-IN')}
+                  </p>
+                  {arrearsCount > 0 && (
+                    <p className="text-[9px] font-bold text-rose/90 dark:text-[#fda4af] mt-1 truncate">
+                      +{arrearsCount} tenant{arrearsCount > 1 ? 's' : ''} arrears
+                    </p>
+                  )}
+                </div>
+              </div>
+            </GlassCard>
+
+            {/* 3. Quick Actions (4 glass buttons with colored icon boxes) */}
+            <div className="grid grid-cols-4 gap-2.5 animate-fade-up">
+              {/* Collect */}
+              <button
+                type="button"
+                onClick={handleQuickCollect}
+                className="rounded-tile p-2.5 sm:p-3 glass-panel hover:bg-white dark:hover:bg-[#1c244c] flex flex-col items-center text-center gap-1.5 active:scale-95 transition cursor-pointer border border-white/80 dark:border-white/15"
+              >
+                <div className="w-10 h-10 rounded-xl bg-teal/15 text-teal dark:text-[#2dd4bf] border border-teal/30 flex items-center justify-center shrink-0">
+                  <Wallet className="w-5 h-5 stroke-[2]" />
+                </div>
+                <span className="text-[11px] font-extrabold text-ink dark:text-white">Collect</span>
+              </button>
+
+              {/* Add tenant */}
+              <button
+                type="button"
+                onClick={() => setIsAddTenantOpen(true)}
+                className="rounded-tile p-2.5 sm:p-3 glass-panel hover:bg-white dark:hover:bg-[#1c244c] flex flex-col items-center text-center gap-1.5 active:scale-95 transition cursor-pointer border border-white/80 dark:border-white/15"
+              >
+                <div className="w-10 h-10 rounded-xl bg-primary/15 text-primary dark:text-[#a5b4fc] border border-primary/30 flex items-center justify-center shrink-0">
+                  <UserPlus className="w-5 h-5 stroke-[2]" />
+                </div>
+                <span className="text-[11px] font-extrabold text-ink dark:text-white">Add tenant</span>
+              </button>
+
+              {/* Receipt */}
+              <button
+                type="button"
+                onClick={() => navigate('/receipts')}
+                className="rounded-tile p-2.5 sm:p-3 glass-panel hover:bg-white dark:hover:bg-[#1c244c] flex flex-col items-center text-center gap-1.5 active:scale-95 transition cursor-pointer border border-white/80 dark:border-white/15"
+              >
+                <div className="w-10 h-10 rounded-xl bg-primary2/15 text-primary2 dark:text-[#c4b5fd] border border-primary2/30 flex items-center justify-center shrink-0">
+                  <ReceiptIndianRupee className="w-5 h-5 stroke-[2]" />
+                </div>
+                <span className="text-[11px] font-extrabold text-ink dark:text-white">Receipt</span>
+              </button>
+
+              {/* Remind */}
+              <button
+                type="button"
+                onClick={handleQuickRemind}
+                className="rounded-tile p-2.5 sm:p-3 glass-panel hover:bg-white dark:hover:bg-[#1c244c] flex flex-col items-center text-center gap-1.5 active:scale-95 transition cursor-pointer border border-white/80 dark:border-white/15"
+              >
+                <div className="w-10 h-10 rounded-xl bg-amber/15 text-amber dark:text-[#fbbf24] border border-amber/30 flex items-center justify-center shrink-0">
+                  <Send className="w-5 h-5 stroke-[2]" />
+                </div>
+                <span className="text-[11px] font-extrabold text-ink dark:text-white">Remind</span>
+              </button>
             </div>
-          )}
-        </div>
+
+            {/* 4. Stat Tiles (3 columns): Properties, Tenants, Paid/Clear */}
+            <div className="grid grid-cols-3 gap-2.5 animate-fade-up">
+              <StatTile
+                icon={Building2}
+                label="Properties"
+                value={properties.length}
+                color="primary"
+                onClick={() => navigate('/properties')}
+              />
+              <StatTile
+                icon={Users}
+                label="Tenants"
+                value={activeTenantsThisMonth.length}
+                color="indigo"
+                onClick={() => navigate('/tenants')}
+              />
+              <StatTile
+                icon={CheckCircle2}
+                label="Paid / Clear"
+                value={paidTenants.length}
+                color="teal"
+                onClick={() => {
+                  setActiveTab('PAID');
+                  if (tenantListRef.current) {
+                    tenantListRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }
+                }}
+              />
+            </div>
+
+            {/* 5. "Last 6 months" glass card: Bar chart of monthly collection percentage */}
+            {monthlyHistory.length > 0 && (
+              <GlassCard className="animate-fade-up space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-extrabold text-ink dark:text-white tracking-tight">
+                      Last 6 Months
+                    </h3>
+                    <p className="text-[10px] text-muted dark:text-[#98a3c4] font-medium">
+                      Collection performance trend
+                    </p>
+                  </div>
+                  <span className="flex items-center gap-1 text-[11px] font-extrabold text-teal bg-teal/10 px-2.5 py-0.5 rounded-full border border-teal/20">
+                    <TrendingUp className="w-3.5 h-3.5 stroke-[2.5]" />
+                    {collectionPercent}% this month
+                  </span>
+                </div>
+
+                <BarChart data={monthlyHistory} />
+              </GlassCard>
+            )}
+
+            {/* 6. "Tenant Rent Status" Glass Card */}
+            <div ref={tenantListRef} className="scroll-mt-20">
+              <GlassCard className="animate-fade-up space-y-4">
+                <div>
+                  <h3 className="text-sm font-black text-ink dark:text-white tracking-tight">
+                    Tenant Rent Status
+                  </h3>
+                  <p className="text-[11px] text-muted dark:text-[#98a3c4] font-medium">
+                    Monthly collection and tenant dues tracking
+                  </p>
+                </div>
+
+                {/* Segmented Tabs (Due Today, Pending, Paid, All with counts) */}
+                <SegmentedTabs
+                  tabs={filterTabs}
+                  activeTab={activeTab}
+                  onChange={setActiveTab}
+                />
+
+                {/* Search Input (Glass style, 16px radius) */}
+                <div className="relative">
+                  <Search className="w-4 h-4 text-muted absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none stroke-[2]" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search tenant by name, room or phone..."
+                    className="w-full pl-10 pr-4 py-2.5 rounded-[16px] glass-panel-strong border border-white/90 dark:border-white/10 text-xs font-semibold text-ink dark:text-white placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-primary/40 transition"
+                  />
+                </div>
+
+                {/* 7. Tenant List & Rows */}
+                {displayedTenants.length === 0 ? (
+                  <div className="text-center py-8 px-4 rounded-tile glass-panel">
+                    <CheckCircle2 className="w-9 h-9 text-teal mx-auto mb-2 stroke-[2]" />
+                    <p className="text-xs font-extrabold text-ink dark:text-white">
+                      {activeTab === 'DUE_TODAY'
+                        ? 'No tenants have rent due today.'
+                        : activeTab === 'DUE'
+                          ? 'All clear! No pending dues.'
+                          : 'No tenants found.'}
+                    </p>
+                    <p className="text-[11px] text-muted dark:text-[#98a3c4] mt-0.5">
+                      All records are up to date.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {displayedTenants.map((tenant, index) => {
+                      const isPaid = tenant.currentMonthDue <= 0.009;
+                      const isDueToday = tenant.currentMonthDue > 0 && isCurrentMonth && (tenant.currentMonthDueDate === todayStr);
+                      const badgeStatus = isPaid ? 'PAID' : isDueToday ? 'DUE_TODAY' : 'PENDING';
+
+                      return (
+                        <div
+                          key={tenant.id}
+                          style={{ animationDelay: `${index * 40}ms` }}
+                          className="rounded-tile p-3.5 glass-panel-strong hover:bg-white dark:hover:bg-[#1a2142] flex items-center justify-between gap-3 transition-all duration-200 group animate-fade-up"
+                        >
+                          {/* Left: Avatar + Details */}
+                          <div
+                            onClick={() => navigate(`/tenants/${tenant.id}`)}
+                            className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
+                          >
+                            <Avatar name={tenant.name} size="md" />
+
+                            <div className="flex-1 min-w-0 space-y-0.5">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="text-xs sm:text-sm font-extrabold text-ink dark:text-white group-hover:text-primary transition truncate">
+                                  {tenant.name}
+                                </h4>
+                                <StatusBadge status={badgeStatus} />
+                              </div>
+
+                              <p className="text-[11px] text-muted dark:text-[#98a3c4] font-semibold truncate">
+                                {tenant.unit} · <strong className="text-ink dark:text-white font-extrabold">₹{tenant.rent.toLocaleString('en-IN')}</strong>
+                              </p>
+
+                              {/* Arrears warning if applicable */}
+                              {tenant.dueMonths?.some((d) => d.month < tenant.targetPeriodKey) && (
+                                <p className="text-[10px] font-bold text-amber inline-flex items-center gap-1 mt-0.5">
+                                  <span>⚠</span>
+                                  <span>Arrears pending</span>
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Right: Actions */}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {!isPaid && (
+                              <button
+                                type="button"
+                                onClick={() => sendWhatsAppReminder(tenant)}
+                                aria-label="Send WhatsApp reminder"
+                                className="w-8 h-8 rounded-btn glass-panel flex items-center justify-center text-teal hover:bg-teal/15 transition active:scale-95 cursor-pointer"
+                                title="Send WhatsApp reminder"
+                              >
+                                <MessageCircle className="w-4 h-4 stroke-[2]" />
+                              </button>
+                            )}
+
+                            {isPaid ? (
+                              <div className="w-8 h-8 rounded-btn bg-teal/15 border border-teal/25 text-teal flex items-center justify-center">
+                                <Check className="w-4 h-4 stroke-[3]" />
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedTenantForPay(tenant)}
+                                aria-label="Collect rent"
+                                className="px-3 py-1.5 rounded-btn bg-gradient-to-br from-[#3d4fe0] to-[#6a5cf0] text-white text-xs font-extrabold flex items-center gap-1 shadow-sm shadow-[#3d4fe0]/25 hover:shadow-md active:scale-95 transition cursor-pointer"
+                              >
+                                <span>Collect</span>
+                                <ArrowUpRight className="w-3.5 h-3.5 stroke-[2.5]" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </GlassCard>
+            </div>
+          </>
+        )}
       </main>
 
+      {/* Modals and Sheets */}
       <RecordPaymentModal
         isOpen={!!selectedTenantForPay}
         tenant={selectedTenantForPay}
         preselectedMonth={selectedTenantForPay?.targetPeriodKey || selectedMonthKey}
         preselectedAmount={selectedTenantForPay?.currentMonthDue}
         onClose={() => setSelectedTenantForPay(null)}
-        onPaymentSuccess={handlePaymentSuccess}
+        onPaymentSuccess={() => handlePaymentSuccess(selectedTenantForPay?.name)}
       />
 
       <AddTenantModal

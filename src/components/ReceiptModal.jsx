@@ -1,6 +1,6 @@
-
 import React, { useRef } from 'react';
-import { X, Download, Share2, CheckCircle2 } from 'lucide-react';
+import { Download, Share2, CheckCircle2 } from 'lucide-react';
+import BottomSheet from './ui/BottomSheet';
 
 export default function ReceiptModal({
   isOpen,
@@ -14,9 +14,9 @@ export default function ReceiptModal({
 
   const description = String(
     receipt.description ??
-      receipt.notes ??
-      receipt.payment_description ??
-      ''
+    receipt.notes ??
+    receipt.payment_description ??
+    ''
   ).trim();
 
   const periodRangeText = typeof receipt.periodRange === 'object'
@@ -62,94 +62,75 @@ export default function ReceiptModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-white w-full max-w-md rounded-[28px] p-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-[#1e3a5f]/10 text-[#1e3a5f] flex items-center justify-center font-bold">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-            </div>
-
-            <div>
-              <h2 className="text-base font-black text-slate-900 leading-none">
-                Payment Receipt
-              </h2>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">
-                Rent <span className="text-[#1e3a5f]">Pilot</span> Verified
-              </p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1 text-slate-400 hover:text-slate-700 rounded-full"
-            aria-label="Close receipt"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
+    <BottomSheet
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Payment Receipt"
+      subtitle={`Receipt #${receipt.receiptNumber || 'N/A'}`}
+    >
+      <div className="space-y-4">
+        {/* Printable/Display Glass Receipt Container */}
         <div
           ref={receiptRef}
-          className="bg-slate-50 p-5 rounded-2xl border border-slate-200 text-slate-900 space-y-4"
+          className="rounded-card p-5 glass-panel-strong border border-white/90 dark:border-white/10 space-y-4"
         >
-          <div className="text-center pb-3 border-b border-slate-200">
-            <h3 className="text-base font-black text-slate-900">
+          {/* Header */}
+          <div className="text-center pb-3 border-b border-white/80 dark:border-white/10">
+            <h3 className="text-base font-black text-ink dark:text-white tracking-tight">
               {landlordProfile?.businessName || 'RentPilot Properties'}
             </h3>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Landlord: {landlordProfile?.name || 'Owner'} •{' '}
-              {landlordProfile?.phone || ''}
+            <p className="text-xs text-muted dark:text-[#98a3c4] mt-0.5 font-medium">
+              Landlord: {landlordProfile?.name || 'Owner'} {landlordProfile?.phone ? `• ${landlordProfile.phone}` : ''}
             </p>
+            <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-0.5 rounded-full bg-teal/15 text-teal border border-teal/25 text-[10px] font-extrabold uppercase tracking-wide">
+              <CheckCircle2 className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>Verified Paid</span>
+            </div>
           </div>
 
-          <div className="flex justify-between text-xs font-semibold">
+          {/* Tenant & Date info */}
+          <div className="flex justify-between items-start text-xs font-semibold">
             <div>
-              <p className="text-slate-400 text-[10px] uppercase font-bold">
+              <p className="text-muted dark:text-[#98a3c4] text-[10px] uppercase font-extrabold tracking-wider">
                 Tenant Details
               </p>
-              <p className="text-slate-900 font-bold mt-0.5">
+              <p className="text-ink dark:text-white font-extrabold mt-0.5">
                 {receipt.tenantName || 'N/A'}
               </p>
-              <p className="text-[#1e3a5f] text-[11px] font-bold mt-0.5">
+              <p className="text-primary dark:text-[#8d99ff] text-[11px] font-bold mt-0.5">
                 {receipt.unit || 'N/A'}
               </p>
             </div>
 
             <div className="text-right">
-              <p className="text-slate-400 text-[10px] uppercase font-bold">
+              <p className="text-muted dark:text-[#98a3c4] text-[10px] uppercase font-extrabold tracking-wider">
                 Payment Date
               </p>
-              <p className="text-slate-900 font-bold mt-0.5">
+              <p className="text-ink dark:text-white font-bold mt-0.5">
                 {receipt.date || 'N/A'}
               </p>
-              <p className="text-[#1e3a5f] text-[11px] font-black mt-0.5">
+              <p className="text-primary dark:text-[#8d99ff] text-[11px] font-extrabold mt-0.5">
                 {receipt.month || ''}
               </p>
               {periodRangeText && (
-                <p className="text-[10px] text-slate-500 font-medium">
+                <p className="text-[10px] text-muted font-medium mt-0.5">
                   {periodRangeText}
                 </p>
-              )}
-              {receipt.collectionMode && (
-                <span className="text-[9px] font-bold text-slate-500 bg-slate-200/80 px-1.5 py-0.5 rounded-md inline-block mt-0.5">
-                  {receipt.collectionMode}
-                </span>
               )}
             </div>
           </div>
 
-          <div className="space-y-1.5 pt-2 border-t border-slate-200 text-xs">
-            <div className="flex justify-between font-medium text-slate-600">
+          {/* Amount breakdown */}
+          <div className="space-y-2 pt-2 border-t border-white/80 dark:border-white/10 text-xs">
+            <div className="flex justify-between font-semibold text-muted dark:text-[#98a3c4]">
               <span>Rent Amount</span>
-              <span className="font-bold text-slate-800">
+              <span className="font-extrabold text-ink dark:text-white">
                 ₹{rentAmount.toLocaleString('en-IN')}
               </span>
             </div>
 
             {electricityAmount > 0 && (
-              <div className="flex justify-between font-medium text-slate-600">
+              <div className="flex justify-between font-semibold text-muted dark:text-[#98a3c4]">
                 <span>
                   Electricity Charges (
                   {receipt.consumedUnits
@@ -157,59 +138,60 @@ export default function ReceiptModal({
                     : 'Sub-meter'}
                   )
                 </span>
-                <span className="font-bold text-slate-800">
+                <span className="font-extrabold text-amber">
                   ₹{electricityAmount.toLocaleString('en-IN')}
                 </span>
               </div>
             )}
 
-            <div className="flex justify-between font-medium text-slate-600">
+            <div className="flex justify-between font-semibold text-muted dark:text-[#98a3c4]">
               <span>Payment Mode</span>
-              <span className="font-bold text-[#1e3a5f]">
+              <span className="font-extrabold text-primary dark:text-[#8d99ff]">
                 {receipt.paymentMode || 'UPI'}
               </span>
             </div>
 
             {description && (
-              <div className="pt-2 border-t border-slate-200 text-xs">
-                <p className="text-slate-400 text-[10px] uppercase font-bold">
-                  Description / Notes
+              <div className="pt-2 border-t border-white/60 dark:border-white/10 text-xs">
+                <p className="text-muted text-[10px] uppercase font-bold">
+                  Notes
                 </p>
-                <p className="mt-1 font-semibold text-slate-800 whitespace-pre-wrap break-words">
+                <p className="mt-0.5 font-semibold text-ink dark:text-white whitespace-pre-wrap break-words">
                   {description}
                 </p>
               </div>
             )}
 
-            <div className="flex justify-between font-black text-sm text-slate-900 pt-2 border-t border-slate-200">
+            <div className="flex justify-between items-center text-sm font-black text-ink dark:text-white pt-2 border-t border-white/80 dark:border-white/10">
               <span>Total Paid</span>
-              <span className="text-emerald-600 font-black">
+              <span className="text-xl font-black text-teal">
                 ₹{grandTotal.toLocaleString('en-IN')}
               </span>
             </div>
           </div>
         </div>
 
-        <div className="pt-4 flex gap-2">
+        {/* Action Buttons */}
+        <div className="grid grid-cols-2 gap-2.5 pt-1">
           <button
             type="button"
             onClick={handlePrint}
-            className="w-1/2 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition"
+            className="py-3 px-3 rounded-btn glass-panel text-ink dark:text-white font-extrabold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition cursor-pointer"
           >
-            <Download className="w-4 h-4" />
+            <Download className="w-4 h-4 stroke-[2]" />
             <span>Print / PDF</span>
           </button>
 
           <button
             type="button"
             onClick={handleWhatsAppShare}
-            className="w-1/2 py-3 bg-[#1e3a5f] hover:bg-[#162b47] text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-md shadow-[#1e3a5f]/20 active:scale-95"
+            className="py-3 px-3 rounded-btn bg-gradient-to-br from-primary to-primary2 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-primary/30 border border-white/20 active:scale-95 transition cursor-pointer"
           >
-            <Share2 className="w-4 h-4" />
+            <Share2 className="w-4 h-4 stroke-[2]" />
             <span>WhatsApp Receipt</span>
           </button>
         </div>
       </div>
-    </div>
+    </BottomSheet>
   );
 }

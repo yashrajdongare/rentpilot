@@ -72,29 +72,32 @@ export default function InitialSetup({ onComplete }) {
     }
   };
 
+  const inputClass =
+    'w-full px-3.5 py-3 bg-white/80 dark:bg-white/5 border border-white/90 dark:border-white/10 rounded-[16px] text-xs font-bold text-ink dark:text-white placeholder:text-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/50 transition-all';
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 animate-in fade-in">
-      <div className="bg-white max-w-md w-full rounded-[32px] p-6 shadow-2xl border border-slate-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-md p-4 animate-in fade-in motion-reduce:animate-none">
+      <div className="glass-panel-strong dark:bg-[#1a2244]/80 border border-white/80 dark:border-white/10 max-w-md w-full rounded-card p-6 sm:p-7 shadow-glass my-auto">
         <div className="text-center mb-6">
-          <div className="w-12 h-12 bg-[#1e3a5f]/10 text-[#1e3a5f] rounded-2xl flex items-center justify-center mx-auto mb-3">
-            <Building className="w-6 h-6" />
+          <div className="w-12 h-12 rounded-tile bg-gradient-to-tr from-primary to-primary2 text-white flex items-center justify-center mx-auto mb-3 shadow-md shadow-primary/25">
+            <Building className="w-5 h-5 stroke-[2]" />
           </div>
 
-          <h2 className="text-xl font-black text-slate-900">
+          <h2 className="text-xl font-extrabold text-ink dark:text-white tracking-tight">
             Welcome to RentPilot
           </h2>
 
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-muted dark:text-muted/80 mt-1">
             Set up your landlord profile to get started
           </p>
         </div>
 
         <form
           onSubmit={handleSubmit}
-          className="space-y-3.5 text-xs font-semibold"
+          className="space-y-4 text-xs font-semibold"
         >
           <div>
-            <label className="block text-slate-600 mb-1">
+            <label className="block text-ink dark:text-white/80 text-xs font-bold mb-1.5">
               Your Full Name *
             </label>
             <input
@@ -106,12 +109,12 @@ export default function InitialSetup({ onComplete }) {
               onChange={(e) =>
                 setFormData({ ...formData, name: e.target.value })
               }
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1e3a5f]"
+              className={inputClass}
             />
           </div>
 
           <div>
-            <label className="block text-slate-600 mb-1">
+            <label className="block text-ink dark:text-white/80 text-xs font-bold mb-1.5">
               Property / Business Name *
             </label>
             <input
@@ -126,12 +129,12 @@ export default function InitialSetup({ onComplete }) {
                   businessName: e.target.value,
                 })
               }
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1e3a5f]"
+              className={inputClass}
             />
           </div>
 
           <div>
-            <label className="block text-slate-600 mb-1">
+            <label className="block text-ink dark:text-white/80 text-xs font-bold mb-1.5">
               WhatsApp Mobile Number *
             </label>
             <input
@@ -144,23 +147,23 @@ export default function InitialSetup({ onComplete }) {
               onChange={(e) =>
                 setFormData({ ...formData, phone: e.target.value })
               }
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-[#1e3a5f]"
+              className={inputClass}
             />
           </div>
 
           {error && (
-            <p role="alert" className="text-red-600 text-xs break-words">
+            <div role="alert" className="p-3 rounded-tile bg-rose/10 border border-rose/20 text-rose text-xs font-medium break-words">
               {error}
-            </p>
+            </div>
           )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3.5 bg-[#1e3a5f] hover:bg-[#162b47] disabled:opacity-60 text-white font-bold rounded-2xl flex items-center justify-center gap-2 shadow-md shadow-[#1e3a5f]/20 active:scale-95 transition mt-2 text-xs"
+            className="w-full py-3.5 bg-gradient-to-r from-primary to-primary2 hover:opacity-95 disabled:opacity-60 text-white font-bold rounded-btn flex items-center justify-center gap-2 shadow-md shadow-primary/25 active:scale-95 transition-all mt-2 text-xs"
           >
             <span>{loading ? 'Saving Profile...' : 'Start Managing'}</span>
-            {!loading && <ArrowRight className="w-4 h-4" />}
+            {!loading && <ArrowRight className="w-4 h-4 stroke-[2]" />}
           </button>
         </form>
       </div>
