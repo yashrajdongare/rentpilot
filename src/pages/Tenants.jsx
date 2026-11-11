@@ -312,7 +312,7 @@ export default function Tenants() {
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                      <StatusBadge status={isActive ? 'PAID' : 'INACTIVE'} />
+                      <StatusBadge status={isActive ? 'ACTIVE' : 'MOVED_OUT'} />
                       <ChevronRight className="w-4 h-4 text-muted group-hover:text-ink dark:group-hover:text-white transition" />
                     </div>
                   </div>

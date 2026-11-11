@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { UserPlus, MapPin, ShieldCheck, Upload } from 'lucide-react';
+import { UserPlus, MapPin, ShieldCheck, Upload, Info } from 'lucide-react';
 import BottomSheet from './ui/BottomSheet';
 import { supabase } from '../lib/supabase';
 
@@ -676,6 +676,37 @@ export default function AddTenantModal({
               </p>
             </div>
           )}
+        </div>
+
+        {/* Explanatory Policy Note */}
+        <div className="p-3.5 rounded-tile glass-panel bg-primary/5 border border-primary/20 text-xs space-y-2.5">
+          <div className="flex items-center gap-2">
+            <Info className="w-4 h-4 text-primary shrink-0 stroke-[2]" />
+            <p className="font-extrabold text-ink dark:text-white text-xs">
+              Billing Model Information
+            </p>
+          </div>
+
+          <div className="space-y-1 pl-3 border-l-2 border-primary/40">
+            <p className="font-extrabold text-primary dark:text-[#a5b4fc] text-[11px] uppercase tracking-wider">
+              Post-Paid
+            </p>
+            <p className="text-[11px] text-ink/80 dark:text-[#cbd5e1] leading-relaxed font-medium">
+              Choose If you take rent <strong className="text-ink dark:text-white">AFTER</strong> a Month is Completed.<br />
+              <span className="text-muted dark:text-[#98a3c4] italic">
+                Eg : Let &apos;Month&apos; is May and you want to receive rent of April
+              </span>
+            </p>
+          </div>
+
+          <div className="space-y-1 pl-3 border-l-2 border-primary/40">
+            <p className="font-extrabold text-primary dark:text-[#a5b4fc] text-[11px] uppercase tracking-wider">
+              Fixed
+            </p>
+            <p className="text-[11px] text-ink/80 dark:text-[#cbd5e1] leading-relaxed font-medium">
+              First Month Partial Rent Will Be Calculated from <strong className="text-ink dark:text-white">{'{15, Mar to 31, Mar}'}</strong>. After that for Next Month <strong className="text-ink dark:text-white">{'{1, Apr to 30, Apr}'}</strong>. Similarly For Each Consecutive Months.
+            </p>
+          </div>
         </div>
 
         {/* Action Buttons */}

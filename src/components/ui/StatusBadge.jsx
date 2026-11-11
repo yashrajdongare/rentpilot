@@ -4,6 +4,23 @@ import { Check, Clock, AlertTriangle } from 'lucide-react';
 export default function StatusBadge({ status, className = '' }) {
   const norm = String(status || '').toUpperCase();
 
+  if (norm === 'ACTIVE') {
+    return (
+      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-emerald-500/15 text-emerald-600 border border-emerald-500/30 dark:bg-emerald-500/20 dark:text-[#34d399] dark:border-emerald-500/40 shrink-0 ${className}`}>
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-[#34d399] animate-pulse" />
+        <span>Active</span>
+      </span>
+    );
+  }
+
+  if (norm === 'INACTIVE' || norm === 'MOVED_OUT' || norm === 'MOVED OUT') {
+    return (
+      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-slate-500/15 text-slate-500 border border-slate-500/25 dark:bg-slate-500/20 dark:text-[#94a3b8] dark:border-slate-500/30 shrink-0 ${className}`}>
+        <span>Moved Out</span>
+      </span>
+    );
+  }
+
   if (norm === 'PAID') {
     return (
       <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-teal/15 text-teal border border-teal/30 dark:bg-teal/20 dark:text-[#2dd4bf] dark:border-teal/40 shrink-0 ${className}`}>

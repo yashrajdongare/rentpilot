@@ -68,9 +68,8 @@ export default function RecordPaymentModal({
     let initialMonth = preselectedMonth;
     if (!initialMonth) {
       const currentMonth = today.slice(0, 7);
-      const defaultMonth = getPrevMonthKey(currentMonth);
       const moveInMonth = moveInDate ? moveInDate.slice(0, 7) : '';
-      initialMonth = (moveInMonth && moveInMonth > defaultMonth) ? moveInMonth : defaultMonth;
+      initialMonth = (moveInMonth && moveInMonth > currentMonth) ? moveInMonth : currentMonth;
     }
     setRentMonth(initialMonth);
 
@@ -415,6 +414,35 @@ export default function RecordPaymentModal({
               onChange={(e) => setAmount(e.target.value)}
               className="w-full px-4 py-3 rounded-[16px] glass-panel-strong border border-white/90 dark:border-white/10 text-base font-extrabold text-ink dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/40 transition"
             />
+          </div>
+
+          {/* Period & Post-Paid Billing Info Card */}
+          <div className="p-3 rounded-tile glass-panel bg-primary/5 border border-primary/15 space-y-1.5">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="font-extrabold text-ink dark:text-white">
+                Applies to: {displayMonth}
+              </span>
+              <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-primary/15 text-primary dark:text-[#a5b4fc] border border-primary/25 shrink-0">
+                Post-Paid
+              </span>
+            </div>
+
+            {periodInfo.range && (
+              <p className="text-[11px] text-muted dark:text-[#98a3c4]">
+                Period: <strong className="text-ink dark:text-white font-bold">{periodInfo.range}</strong>
+              </p>
+            )}
+
+            <div className="pt-1.5 border-t border-white/60 dark:border-white/10 flex items-center justify-between text-[11px]">
+              <span className="text-muted dark:text-[#98a3c4] font-semibold">
+                {periodInfo.isProrated
+                  ? `Prorated Rent (${periodInfo.eligibleDays}/${periodInfo.totalDays} days):`
+                  : 'Full Monthly Rent:'}
+              </span>
+              <strong className="text-primary dark:text-[#a5b4fc] font-black">
+                ₹{targetChargeAmount.toLocaleString('en-IN')}
+              </strong>
+            </div>
           </div>
 
           {/* Collapsible Electricity / Sub-meter Charges */}

@@ -641,7 +641,7 @@ export default function TenantDetails() {
                 <h2 className="text-xl font-black text-ink dark:text-white tracking-tight truncate">
                   {tenant.name}
                 </h2>
-                <StatusBadge status={isActiveTenant ? 'PAID' : 'INACTIVE'} />
+                <StatusBadge status={isActiveTenant ? 'ACTIVE' : 'MOVED_OUT'} />
               </div>
 
               <p className="text-xs text-muted dark:text-[#98a3c4] font-semibold mt-0.5 truncate">

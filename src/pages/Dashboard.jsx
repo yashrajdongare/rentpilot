@@ -243,21 +243,18 @@ export default function Dashboard({ profile }) {
         const propConfig = propertyConfigMap[tenant.property_id] || { dueDay: 10 };
         const dueDay = Number(tenant.due_day || propConfig.dueDay || 10);
 
-        const targetPeriodKey = getPrevMonthKey(selectedMonthKey);
+        // Every selected month is strictly independent and separate
+        const targetPeriodKey = selectedMonthKey;
         const targetPeriodLabel = mlabel(targetPeriodKey);
         const dueDateInSelectedMonth = `${selectedMonthKey}-${String(Math.min(Math.max(dueDay, 1), 28)).padStart(2, '0')}`;
 
         const targetFirstDay = `${targetPeriodKey}-01`;
         const targetNextFirstDay = nextMonthFirstDay(targetPeriodKey);
-        const isActiveForTargetPeriod = (!moveIn || moveIn < targetNextFirstDay) &&
+        const isActiveForSelectedMonth = (!moveIn || moveIn < targetNextFirstDay) &&
           (!moveOut || moveOut >= targetFirstDay) &&
           status !== 'archived';
 
-        const isActiveForMonth = (!moveIn || moveIn < nextMonthDate) &&
-          (!moveOut || moveOut >= monthStartDate) &&
-          (status === 'active' || (moveOut && moveOut >= monthStartDate));
-
-        const expectedTargetRent = isActiveForTargetPeriod
+        const expectedMonthRent = isActiveForSelectedMonth
           ? calculateRentCharge({
             monthlyRent: rent,
             moveInDate: moveIn,
@@ -265,60 +262,25 @@ export default function Dashboard({ profile }) {
           })
           : 0;
 
-        const dueMonths = [];
-        let cursor = moveIn ? new Date(`${moveIn.slice(0, 7)}-01T12:00:00`) : new Date(`${targetPeriodKey}-01T12:00:00`);
-        const end = new Date(`${targetPeriodKey}-01T12:00:00`);
-        if (cursor > end) cursor = new Date(end);
+        const paid = paymentByTenantMonth[`${tenant.id}|${targetPeriodKey}`] || { rent: 0, total: 0 };
+        const currentMonthPaid = roundToTwo(paid.rent);
+
+        const charge = chargeByTenantMonth[`${tenant.id}|${targetPeriodKey}`];
         let currentMonthDue = 0;
-        let currentMonthPaid = 0;
-        let guard = 0;
-
-        while (cursor <= end && guard < 240) {
-          guard += 1;
-          const keyMonth = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
-          const monthFirst = `${keyMonth}-01`;
-          const isBeforeMoveIn = moveIn && monthFirst < `${moveIn.slice(0, 7)}-01`;
-          const isAfterMoveOut = moveOut && monthFirst > `${moveOut.slice(0, 7)}-01`;
-
-          if (!isBeforeMoveIn && !isAfterMoveOut && status !== 'archived') {
-            const charge = chargeByTenantMonth[`${tenant.id}|${keyMonth}`];
-            const paid = paymentByTenantMonth[`${tenant.id}|${keyMonth}`] || { rent: 0, total: 0 };
-            let balance = 0;
-
-            const expectedMonthRent = calculateRentCharge({
-              monthlyRent: rent,
-              moveInDate: moveIn,
-              monthKey: keyMonth,
-            });
-
-            if (charge && charge.status !== 'void') {
-              const chargeTotal = (Number(charge.rent_amount) || 0) + (Number(charge.maintenance_amount) || 0) + (Number(charge.electricity_amount) || 0);
-              const allocated = allocatedByCharge[charge.id] || 0;
-              balance = charge.status === 'paid' ? 0 : Math.max(chargeTotal - allocated, 0);
-            } else if (!charge) {
-              balance = Math.max(roundToTwo(expectedMonthRent - paid.rent), 0);
-            }
-
-            if (keyMonth === targetPeriodKey) {
-              currentMonthDue = balance;
-              currentMonthPaid = roundToTwo(paid.rent);
-            }
-
-            if (balance > 0.009) {
-              const periodDueDate = calculateDueDate(keyMonth, dueDay);
-
-              dueMonths.push({
-                month: keyMonth,
-                label: mlabel(keyMonth),
-                amount: Math.round(balance * 100) / 100,
-                dueDate: charge?.due_date || periodDueDate,
-              });
-            }
-          }
-          cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1, 12);
+        if (charge && charge.status !== 'void') {
+          const chargeTotal = (Number(charge.rent_amount) || 0) + (Number(charge.maintenance_amount) || 0) + (Number(charge.electricity_amount) || 0);
+          const allocated = allocatedByCharge[charge.id] || 0;
+          currentMonthDue = charge.status === 'paid' ? 0 : Math.max(chargeTotal - allocated, 0);
+        } else if (expectedMonthRent > 0) {
+          currentMonthDue = Math.max(roundToTwo(expectedMonthRent - currentMonthPaid), 0);
         }
 
-        const totalOutstanding = dueMonths.reduce((sum, item) => sum + item.amount, 0);
+        const dueMonths = currentMonthDue > 0.009 ? [{
+          month: targetPeriodKey,
+          label: targetPeriodLabel,
+          amount: Math.round(currentMonthDue * 100) / 100,
+          dueDate: charge?.due_date || dueDateInSelectedMonth,
+        }] : [];
 
         return {
           ...tenant,
@@ -336,13 +298,13 @@ export default function Dashboard({ profile }) {
           targetPeriodKey,
           targetPeriodLabel,
           currentMonthDueDate: dueDateInSelectedMonth,
-          isActiveForMonth,
-          isActiveForTargetPeriod,
-          expectedRentThisCycle: expectedTargetRent,
+          isActiveForMonth: isActiveForSelectedMonth,
+          isActiveForTargetPeriod: isActiveForSelectedMonth,
+          expectedRentThisCycle: expectedMonthRent,
           rentPaidThisMonth: currentMonthPaid,
           currentMonthDue,
           dueMonths,
-          rentDueThisMonth: Math.round(totalOutstanding * 100) / 100,
+          rentDueThisMonth: Math.round(currentMonthDue * 100) / 100,
           paymentStatus: status !== 'active' ? 'INACTIVE' : currentMonthDue <= 0.009 ? 'PAID' : 'DUE',
         };
       });
@@ -453,9 +415,8 @@ export default function Dashboard({ profile }) {
     const message =
       `*RENT PAYMENT REMINDER*\n\n` +
       `Hello *${tenant.name}*,\n` +
-      `This is a friendly reminder that rent for *${tenant.unit}* is outstanding for the following month(s):\n` +
-      `${(tenant.dueMonths || []).map((item) => `• ${item.label}: ₹${item.amount.toLocaleString('en-IN')}`).join('\n')}\n\n` +
-      `💵 *Total Outstanding:* ₹${tenant.rentDueThisMonth.toLocaleString('en-IN')}\n` +
+      `This is a friendly reminder that rent for *${tenant.unit}* is outstanding for *${currentMonthName}*:\n\n` +
+      `💵 *Amount Due:* ₹${tenant.currentMonthDue.toLocaleString('en-IN')}\n` +
       (profile?.upiId ? `📲 *UPI ID:* ${profile.upiId}\n\n` : `\n`) +
       `Please complete the payment at your earliest convenience to receive the official receipt.\n` +
       `— *${business}*`;

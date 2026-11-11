@@ -279,7 +279,7 @@ export default function PropertyDetails() {
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
-                    <StatusBadge status="PAID" />
+                    <StatusBadge status={tenant.status === 'active' || tenant.status === 'ACTIVE' || !tenant.status ? 'ACTIVE' : 'MOVED_OUT'} />
                     <ChevronRight className="w-4 h-4 text-muted group-hover:text-ink dark:group-hover:text-white transition" />
                   </div>
                 </div>
