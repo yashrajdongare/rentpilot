@@ -35,11 +35,13 @@ import {
   calculateRentCharge,
   calculateDueDate,
   calculatePeriodRange,
+  fmtBillLabel,
   toMonthKey,
   fmtMonthLabel,
   fmtShortMonth,
   getNextMonthKey,
   roundToTwo,
+  getTenantLedgerRows,
 } from '../utils/billing';
 
 export default function TenantDetails() {
@@ -56,6 +58,7 @@ export default function TenantDetails() {
   const [activeDetailTab, setActiveDetailTab] = useState('LEDGER');
   const [preselectedMonth, setPreselectedMonth] = useState(null);
   const [preselectedAmount, setPreselectedAmount] = useState(null);
+  const [isAdvancePayment, setIsAdvancePayment] = useState(false);
   const [aadhaarDocument, setAadhaarDocument] = useState(null);
   const [isDocPreviewOpen, setIsDocPreviewOpen] = useState(false);
   const [editAadharFile, setEditAadharFile] = useState(null);
@@ -274,99 +277,27 @@ export default function TenantDetails() {
 
   const monthLedger = useMemo(() => {
     if (!tenant) return [];
-    const now = new Date();
-    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const todayDateStr = now.toLocaleDateString('en-CA');
-    const dueDay = tenant.dueDay || 10;
-    const moveInDate = tenant.moveInDate || tenant.move_in_date || tenant.startDate || '';
-
-    let startKey = todayKey;
-    if (moveInDate && String(moveInDate).length >= 7) {
-      startKey = String(moveInDate).slice(0, 7);
-    } else if (payments.length > 0) {
-      const earliest = payments[payments.length - 1];
-      const pKey = toMonthKey(earliest.paymentMonth || earliest.paymentDate);
-      if (pKey) startKey = pKey;
-    }
-
-    const getPaymentMonthKey = (p) => {
-      if (!p) return '';
-      if (p.monthKey) return p.monthKey;
-      if (p.paymentMonth) return String(p.paymentMonth).slice(0, 7);
-      if (p.payment_month) return String(p.payment_month).slice(0, 7);
-      if (p.month && /^\d{4}-\d{2}$/.test(p.month)) return p.month;
-      if (p.paymentDate) return String(p.paymentDate).slice(0, 7);
-      return '';
-    };
-
-    const paidByMonth = {};
-    payments.forEach((p) => {
-      const mk = getPaymentMonthKey(p);
-      if (!mk) return;
-      if (!paidByMonth[mk]) paidByMonth[mk] = 0;
-      paidByMonth[mk] += Number(p.amount) || 0;
+    return getTenantLedgerRows({
+      tenant,
+      payments,
+      today: new Date(),
     });
+  }, [tenant, payments]);
 
-    const rows = [];
-    const [startY, startM] = startKey.split('-').map(Number);
-    let cursor = (startY && startM) ? new Date(startY, startM - 1, 1, 12) : new Date();
-    const end = new Date(`${todayKey}-01T12:00:00`);
-    if (cursor > end) cursor = new Date(end);
-    let guard = 0;
-
-    while (cursor <= end && guard < 240) {
-      guard++;
-      const mk = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
-      const paid = roundToTwo(paidByMonth[mk] || 0);
-      const due = calculateRentCharge({
-        monthlyRent,
-        moveInDate,
-        monthKey: mk,
-      });
-      const balance = Math.max(roundToTwo(due - paid), 0);
-
-      const dueDateStr = calculateDueDate(mk, dueDay);
-      const nextMk = getNextMonthKey(mk);
-      const dueNote = `Due on ${dueDay} ${fmtShortMonth(nextMk)}`;
-
-      let status;
-      if (balance <= 0.009) {
-        status = 'PAID';
-      } else if (paid > 0) {
-        status = 'PARTIAL';
-      } else if (todayDateStr <= dueDateStr) {
-        status = 'UPCOMING';
-      } else {
-        status = 'OVERDUE';
-      }
-
-      rows.push({
-        monthKey: mk,
-        label: fmtMonthLabel(mk),
-        due,
-        paid,
-        balance,
-        dueDate: dueDateStr,
-        dueNote,
-        status,
-        receipts: payments.filter(
-          (p) => getPaymentMonthKey(p) === mk
-        ),
-      });
-      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1, 12);
-    }
-    return rows.reverse();
-  }, [tenant, payments, monthlyRent]);
-
-  const ledgerPendingCount = monthLedger.filter((r) => r.status === 'OVERDUE' || r.status === 'PARTIAL').length;
-  const overdueBalance = roundToTwo(
+  // Fix 4a: Split TOTAL OUTSTANDING into Due Now (Overdue + Due) and Upcoming
+  const dueNowBalance = roundToTwo(
     monthLedger
-      .filter((r) => r.status === 'OVERDUE')
-      .reduce((s, r) => s + r.balance, 0)
+      .filter((r) => r.isDueNow)
+      .reduce((s, r) => s + r.pendingAmount, 0)
   );
-  const ledgerTotalOutstanding = roundToTwo(
-    monthLedger.reduce((s, r) => s + r.balance, 0)
+
+  const upcomingBalance = roundToTwo(
+    monthLedger
+      .filter((r) => r.isUpcoming)
+      .reduce((s, r) => s + r.pendingAmount, 0)
   );
+
+  const ledgerPendingCount = monthLedger.filter((r) => !r.isPaid).length;
 
   const handleVacateTenant = async () => {
     const confirmed = window.confirm(
@@ -446,11 +377,12 @@ export default function TenantDetails() {
       return;
     }
 
+    const label = row.billLabel || `Rent for ${row.monthLabel || row.label}`;
     const message =
       `*RENT DUE REMINDER* 🔔\n` +
       `Dear ${tenant.name || 'Tenant'},\n\n` +
-      `This is a gentle reminder regarding your rent for *${row.label}*:\n` +
-      `• *Pending Rent:* ₹${row.balance.toLocaleString('en-IN')}\n` +
+      `This is a gentle reminder regarding your *${label}*:\n` +
+      `• *Pending Rent:* ₹${(row.pendingAmount ?? row.balance).toLocaleString('en-IN')}\n` +
       `• *Due Date:* ${row.dueDate}\n` +
       `• *Status:* ${row.status}\n\n` +
       `Kindly clear the pending dues.\n` +
@@ -769,16 +701,16 @@ export default function TenantDetails() {
           {/* Ledger View */}
           {activeDetailTab === 'LEDGER' && (
             <div className="space-y-3">
-              {ledgerTotalOutstanding > 0 && (
+              {isActiveTenant && (
                 <div className="rounded-tile p-3.5 bg-rose/10 border border-rose/25 space-y-2">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-[10px] text-rose font-extrabold uppercase tracking-wider">Total Outstanding</p>
-                      <p className="text-base font-black text-rose mt-0.5">₹{ledgerTotalOutstanding.toLocaleString('en-IN')}</p>
+                      <p className="text-[10px] text-rose font-extrabold uppercase tracking-wider">Due Now (Overdue + Due)</p>
+                      <p className="text-base font-black text-rose mt-0.5">₹{(Number(dueNowBalance) || 0).toLocaleString('en-IN')}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-[10px] text-muted font-bold uppercase tracking-wider">Overdue Dues</p>
-                      <p className="text-sm font-black text-rose mt-0.5">₹{overdueBalance.toLocaleString('en-IN')}</p>
+                      <p className="text-[10px] text-muted dark:text-[#a0aec0] font-extrabold uppercase tracking-wider">Upcoming</p>
+                      <p className="text-base font-black text-ink dark:text-white mt-0.5">₹{(Number(upcomingBalance) || 0).toLocaleString('en-IN')}</p>
                     </div>
                   </div>
                 </div>
@@ -790,8 +722,11 @@ export default function TenantDetails() {
                 <div className="space-y-2">
                   {monthLedger.map((row) => {
                     const isPaid = row.status === 'PAID';
-                    const isPartial = row.status === 'PARTIAL';
+                    const isPartial = row.isPartial;
                     const isUpcoming = row.status === 'UPCOMING';
+                    const paidAmt = Number(row.paidAmount) || 0;
+                    const pendingAmt = Number(row.pendingAmount) || 0;
+                    const billAmt = Number(row.billAmount) || 0;
 
                     return (
                       <div
@@ -800,26 +735,26 @@ export default function TenantDetails() {
                       >
                         <div className="min-w-0 space-y-0.5">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <p className="font-extrabold text-ink dark:text-white">{row.label}</p>
+                            <p className="font-extrabold text-ink dark:text-white">{row.billLabel || row.label}</p>
                             <StatusBadge status={row.status} />
                           </div>
 
                           <p className="text-[11px] text-muted dark:text-[#98a3c4] font-semibold">
                             {isPaid
-                              ? `Paid ₹${row.paid.toLocaleString('en-IN')}`
+                              ? `Paid ₹${paidAmt.toLocaleString('en-IN')}`
                               : isPartial
-                                ? `Paid ₹${row.paid.toLocaleString('en-IN')} • Balance ₹${row.balance.toLocaleString('en-IN')}`
-                                : `Due ₹${row.due.toLocaleString('en-IN')}`}
+                                ? `Paid ₹${paidAmt.toLocaleString('en-IN')} • Due ₹${pendingAmt.toLocaleString('en-IN')}`
+                                : `Due ₹${billAmt.toLocaleString('en-IN')}`}
                             <span className="opacity-75 ml-1">• {row.dueNote}</span>
                           </p>
                         </div>
 
                         <div className="flex items-center gap-1.5 shrink-0">
-                          {row.receipts.length > 0 && (
+                          {row.payments && row.payments.length > 0 && (
                             <button
                               type="button"
-                              onClick={() => setSelectedReceipt(row.receipts[0])}
-                              className="w-7 h-7 rounded-btn glass-panel flex items-center justify-center text-muted hover:text-ink dark:hover:text-white transition active:scale-95"
+                              onClick={() => setSelectedReceipt(row.payments[0])}
+                              className="w-7 h-7 rounded-btn glass-panel flex items-center justify-center text-muted hover:text-ink dark:hover:text-white transition active:scale-95 cursor-pointer"
                               title="View receipt"
                             >
                               <ReceiptIndianRupee className="w-3.5 h-3.5 stroke-[2]" />
@@ -831,22 +766,40 @@ export default function TenantDetails() {
                               <button
                                 type="button"
                                 onClick={() => handleSendLedgerWhatsAppReminder(row)}
-                                className="w-7 h-7 rounded-btn bg-teal/15 text-teal flex items-center justify-center transition active:scale-95"
+                                className="w-7 h-7 rounded-btn bg-teal/15 text-teal flex items-center justify-center transition active:scale-95 cursor-pointer"
                                 title="Send WhatsApp reminder"
                               >
                                 <MessageCircle className="w-3.5 h-3.5 stroke-[2]" />
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setPreselectedMonth(row.monthKey);
-                                  setPreselectedAmount(isPartial ? row.balance : row.due);
-                                  setIsPayModalOpen(true);
-                                }}
-                                className="px-2.5 py-1 rounded-btn bg-gradient-to-br from-[#3d4fe0] to-[#6a5cf0] text-white text-[10px] font-extrabold active:scale-95 transition"
-                              >
-                                {isPartial ? 'Pay Balance' : 'Collect'}
-                              </button>
+                              {isUpcoming ? (
+                                /* Fix 5: For Upcoming bills, show Collect Advance */
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPreselectedMonth(row.monthKey);
+                                    setPreselectedAmount(row.pendingAmount);
+                                    setIsAdvancePayment(true);
+                                    setIsPayModalOpen(true);
+                                  }}
+                                  className="px-2.5 py-1 rounded-btn bg-primary/15 hover:bg-primary/25 text-primary border border-primary/25 text-[10px] font-extrabold active:scale-95 transition cursor-pointer"
+                                >
+                                  Collect Advance
+                                </button>
+                              ) : (
+                                /* Normal Collect / Pay Balance for DUE or OVERDUE bills */
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPreselectedMonth(row.monthKey);
+                                    setPreselectedAmount(isPartial ? row.pendingAmount : row.billAmount);
+                                    setIsAdvancePayment(false);
+                                    setIsPayModalOpen(true);
+                                  }}
+                                  className="px-2.5 py-1 rounded-btn bg-gradient-to-br from-[#3d4fe0] to-[#6a5cf0] text-white text-[10px] font-extrabold active:scale-95 transition cursor-pointer"
+                                >
+                                  {isPartial ? 'Pay Balance' : 'Collect'}
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1096,10 +1049,12 @@ export default function TenantDetails() {
         tenant={tenant}
         preselectedMonth={preselectedMonth}
         preselectedAmount={preselectedAmount}
+        isAdvance={isAdvancePayment}
         onClose={() => {
           setIsPayModalOpen(false);
           setPreselectedMonth(null);
           setPreselectedAmount(null);
+          setIsAdvancePayment(false);
         }}
         onPaymentSuccess={handlePaymentSuccess}
       />

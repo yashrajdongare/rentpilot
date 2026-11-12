@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { Download, Share2, CheckCircle2 } from 'lucide-react';
 import BottomSheet from './ui/BottomSheet';
+import { calculateDueDate, fmtBillLabel } from '../utils/billing';
 
 export default function ReceiptModal({
   isOpen,
@@ -27,13 +28,23 @@ export default function ReceiptModal({
   const electricityAmount = Number(receipt.electricityAmount) || 0;
   const grandTotal = rentAmount + electricityAmount;
 
+  let displayBillLabel = receipt.month || '';
+  if (!String(displayBillLabel).startsWith('Rent for ')) {
+    const mKey = receipt.monthKey || (receipt.payment_month ? String(receipt.payment_month).slice(0, 7) : '');
+    if (mKey) {
+      const dueDay = receipt.dueDay || receipt.due_day || 10;
+      const dueDate = calculateDueDate(mKey, dueDay);
+      displayBillLabel = fmtBillLabel(mKey, dueDate);
+    }
+  }
+
   const handlePrint = () => {
     window.print();
   };
 
   const handleWhatsAppShare = () => {
     const text =
-      `*RENT RECEIPT - ${receipt.month || ''}*\n` +
+      `*RENT RECEIPT - ${displayBillLabel || receipt.month || ''}*\n` +
       `Property: ${landlordProfile?.businessName || 'RentPilot'}\n` +
       `Owner: ${landlordProfile?.name || 'Owner'} (${landlordProfile?.phone || ''})\n\n` +
       `Tenant: ${receipt.tenantName || 'N/A'} (${receipt.unit || 'N/A'})\n` +
@@ -110,7 +121,7 @@ export default function ReceiptModal({
                 {receipt.date || 'N/A'}
               </p>
               <p className="text-primary dark:text-[#8d99ff] text-[11px] font-extrabold mt-0.5">
-                {receipt.month || ''}
+                {displayBillLabel || receipt.month || ''}
               </p>
               {periodRangeText && (
                 <p className="text-[10px] text-muted font-medium mt-0.5">

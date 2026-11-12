@@ -6,8 +6,8 @@ import { supabase } from '../lib/supabase';
 import {
   calculateRentCharge,
   calculatePeriodRange,
-  getPrevMonthKey,
-  roundToTwo,
+  calculateDueDate,
+  fmtBillLabel,
 } from '../utils/billing';
 
 export default function RecordPaymentModal({
@@ -17,6 +17,7 @@ export default function RecordPaymentModal({
   onPaymentSuccess,
   preselectedMonth = null,   // 'YYYY-MM' — if set, pre-fill the rent month
   preselectedAmount = null,  // number — if set, pre-fill the due/balance amount
+  isAdvance = false,
 }) {
   const [amount, setAmount] = useState('');
   const [prevUnits, setPrevUnits] = useState('');
@@ -145,6 +146,9 @@ export default function RecordPaymentModal({
     })
     : '';
 
+  const billDueDate = calculateDueDate(rentMonth, tenant?.due_day || tenant?.dueDay || 10);
+  const billLabel = fmtBillLabel(rentMonth, billDueDate);
+
   const handleSendWhatsAppReminder = () => {
     const cleanPhone = String(tenant?.phone || '').replace(/\D/g, '');
     const phoneWithCode = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
@@ -157,7 +161,7 @@ export default function RecordPaymentModal({
       `*RENT DUE REMINDER* 🔔\n` +
       `Dear ${tenant.name || tenant.full_name || 'Tenant'},\n\n` +
       `This is a gentle reminder for your rent payment:\n` +
-      `• *Month:* ${displayMonth}\n` +
+      `• *Bill:* ${billLabel || displayMonth}\n` +
       (periodInfo.range ? `• *Rental Period:* ${periodInfo.range}\n` : '') +
       `• *Pending Rent:* ₹${rentVal.toLocaleString('en-IN')}\n` +
       (lightBill > 0 ? `• *Electricity Bill:* ₹${lightBill.toLocaleString('en-IN')} (${consumedUnits} units)\n` : '') +
@@ -235,7 +239,10 @@ export default function RecordPaymentModal({
 
       const monthDate = `${rentMonth}-01`;
       const receiptNumber = `RP-${Date.now()}`;
-      const finalDescription = description.trim() || `Rent payment for ${displayMonth} (${periodInfo.range})`;
+      const defaultDesc = isAdvance
+        ? `Advance rent payment for ${billLabel || displayMonth} (${periodInfo.range})`
+        : `Rent payment for ${billLabel || displayMonth} (${periodInfo.range})`;
+      const finalDescription = description.trim() || defaultDesc;
 
       const { data: result, error: paymentError } = await supabase.rpc(
         'record_rent_payment',
@@ -300,7 +307,7 @@ export default function RecordPaymentModal({
         totalAmount: grandTotal,
         paymentMode: savedPayment.payment_method || paymentMode,
         description: finalDescription,
-        month: displayMonth,
+        month: billLabel || displayMonth,
         monthKey: rentMonth,
         paymentMonth: monthDate,
         payment_month: monthDate,
@@ -351,14 +358,14 @@ export default function RecordPaymentModal({
       <BottomSheet
         isOpen={isOpen && !isReceiptOpen}
         onClose={onClose}
-        title="Collect Rent"
+        title={isAdvance ? "Collect Advance Rent" : "Collect Rent"}
         subtitle={`${tenant.name || tenant.full_name} • ${tenant.unit || tenant.unit_label}`}
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Big Amount Header Card */}
           <div className="rounded-card p-5 glass-panel-strong border border-white/90 dark:border-white/10 text-center relative overflow-hidden">
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-muted dark:text-[#98a3c4]">
-              Total Payable ({displayMonth})
+              Total Payable ({billLabel || displayMonth})
             </span>
             <div className="text-4xl font-black text-ink dark:text-white tracking-tight mt-1">
               ₹{grandTotal.toLocaleString('en-IN')}
@@ -420,7 +427,7 @@ export default function RecordPaymentModal({
           <div className="p-3 rounded-tile glass-panel bg-primary/5 border border-primary/15 space-y-1.5">
             <div className="flex items-center justify-between gap-2 text-xs">
               <span className="font-extrabold text-ink dark:text-white">
-                Applies to: {displayMonth}
+                Applies to: {billLabel || displayMonth}
               </span>
               <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-primary/15 text-primary dark:text-[#a5b4fc] border border-primary/25 shrink-0">
                 Post-Paid

@@ -4,7 +4,7 @@ import ReceiptModal from '../components/ReceiptModal';
 import GlassCard from '../components/ui/GlassCard';
 import Avatar from '../components/ui/Avatar';
 import { supabase } from '../lib/supabase';
-import { calculatePeriodRange } from '../utils/billing';
+import { calculatePeriodRange, calculateDueDate, fmtBillLabel } from '../utils/billing';
 
 function toMonthKey(dateStr) {
   if (!dateStr) return '';
@@ -55,7 +55,7 @@ export default function Receipts({ profile }) {
         if (tenantIds.length > 0) {
           const { data: tenants, error: tenantError } = await supabase
             .from('tenants')
-            .select('id, full_name, phone, unit_label, move_in_date')
+            .select('id, full_name, phone, unit_label, move_in_date, due_day')
             .in('id', tenantIds);
           if (tenantError) throw tenantError;
           tenantsById = Object.fromEntries((tenants || []).map((t) => [t.id, t]));
@@ -65,7 +65,9 @@ export default function Receipts({ profile }) {
           const tenant = tenantsById[p.tenant_id] || {};
           const monthValue = p.payment_month || p.payment_date;
           const monthKey = toMonthKey(monthValue);
-          const month = monthKey ? monthLabel(monthKey) : '';
+          const dueDate = calculateDueDate(monthKey, tenant.due_day || 10);
+          const billLabel = fmtBillLabel(monthKey, dueDate);
+          const month = billLabel || (monthKey ? monthLabel(monthKey) : '');
           const date = p.payment_date
             ? new Date(`${String(p.payment_date).slice(0, 10)}T12:00:00`).toLocaleDateString('en-GB')
             : '';

@@ -18,6 +18,7 @@ import Settings from './pages/Settings';
 import Pricing from './pages/Pricing';
 import InitialSetup from './components/InitialSetup';
 import Logo from './components/Logo';
+import ErrorBoundary from './components/ErrorBoundary';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { ToastProvider } from './context/ToastContext';
 import {
@@ -426,16 +427,18 @@ export default function App() {
               {/* Main Content Viewport: Full width responsive container */}
               <div className="flex-1 min-w-0 flex flex-col relative z-10">
                 <main className="flex-1 w-full max-w-5xl mx-auto p-3 sm:p-5 md:p-6 lg:p-8 md:pb-8 pb-24">
-                  <Routes>
-                    <Route path="/" element={<Dashboard profile={profile} />} />
-                    <Route path="/properties" element={<Properties />} />
-                    <Route path="/properties/:id" element={<PropertyDetails />} />
-                    <Route path="/tenants" element={<Tenants />} />
-                    <Route path="/tenants/:id" element={<TenantDetails />} />
-                    <Route path="/receipts" element={<Receipts profile={profile} />} />
-                    <Route path="/settings" element={<Settings />} />
-                    <Route path="/pricing" element={<Pricing />} />
-                  </Routes>
+                  <ErrorBoundary>
+                    <Routes>
+                      <Route path="/" element={<Dashboard profile={profile} />} />
+                      <Route path="/properties" element={<Properties />} />
+                      <Route path="/properties/:id" element={<PropertyDetails />} />
+                      <Route path="/tenants" element={<Tenants />} />
+                      <Route path="/tenants/:id" element={<TenantDetails />} />
+                      <Route path="/receipts" element={<Receipts profile={profile} />} />
+                      <Route path="/settings" element={<Settings />} />
+                      <Route path="/pricing" element={<Pricing />} />
+                    </Routes>
+                  </ErrorBoundary>
                 </main>
 
                 {/* Mobile Bottom Navigation (Hidden on tablet & desktop) */}
