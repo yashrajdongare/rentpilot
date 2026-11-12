@@ -12,13 +12,9 @@ import {
   TrendingUp,
   Bell,
   Search,
-  ReceiptIndianRupee,
-  UserPlus,
   Home,
   ChevronLeft,
   ChevronRight,
-  Wallet,
-  Send,
   Moon,
   Sun,
   AlertTriangle,
@@ -426,27 +422,6 @@ export default function Dashboard({ profile }) {
     window.open(`https://wa.me/${phoneWithCode}?text=${encodeURIComponent(message)}`, '_blank');
   };
 
-  const handleQuickRemind = () => {
-    if (dueRentTenants.length > 0) {
-      sendWhatsAppReminder(dueRentTenants[0]);
-    } else if (pendingTenants.length > 0) {
-      sendWhatsAppReminder(pendingTenants[0]);
-    } else {
-      showToast('All tenants have paid! No reminders needed.', 'info');
-    }
-  };
-
-  const handleQuickCollect = () => {
-    if (pendingTenants.length > 0) {
-      setSelectedTenantForPay(pendingTenants[0]);
-    } else {
-      setActiveTab('DUE');
-      if (tenantListRef.current) {
-        tenantListRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }
-  };
-
   const displayedTenants = activeTenantsThisMonth.filter((t) => {
     const matchesSearch =
       t.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -664,58 +639,7 @@ export default function Dashboard({ profile }) {
               </div>
             </GlassCard>
 
-            {/* 3. Quick Actions (4 glass buttons with colored icon boxes) */}
-            <div className="grid grid-cols-4 gap-2.5 animate-fade-up">
-              {/* Collect */}
-              <button
-                type="button"
-                onClick={handleQuickCollect}
-                className="rounded-tile p-2.5 sm:p-3 glass-panel hover:bg-white dark:hover:bg-[#1c244c] flex flex-col items-center text-center gap-1.5 active:scale-95 transition cursor-pointer border border-white/80 dark:border-white/15"
-              >
-                <div className="w-10 h-10 rounded-xl bg-teal/15 text-teal dark:text-[#2dd4bf] border border-teal/30 flex items-center justify-center shrink-0">
-                  <Wallet className="w-5 h-5 stroke-[2]" />
-                </div>
-                <span className="text-[11px] font-extrabold text-ink dark:text-white">Collect</span>
-              </button>
-
-              {/* Add tenant */}
-              <button
-                type="button"
-                onClick={() => setIsAddTenantOpen(true)}
-                className="rounded-tile p-2.5 sm:p-3 glass-panel hover:bg-white dark:hover:bg-[#1c244c] flex flex-col items-center text-center gap-1.5 active:scale-95 transition cursor-pointer border border-white/80 dark:border-white/15"
-              >
-                <div className="w-10 h-10 rounded-xl bg-primary/15 text-primary dark:text-[#a5b4fc] border border-primary/30 flex items-center justify-center shrink-0">
-                  <UserPlus className="w-5 h-5 stroke-[2]" />
-                </div>
-                <span className="text-[11px] font-extrabold text-ink dark:text-white">Add tenant</span>
-              </button>
-
-              {/* Receipt */}
-              <button
-                type="button"
-                onClick={() => navigate('/receipts')}
-                className="rounded-tile p-2.5 sm:p-3 glass-panel hover:bg-white dark:hover:bg-[#1c244c] flex flex-col items-center text-center gap-1.5 active:scale-95 transition cursor-pointer border border-white/80 dark:border-white/15"
-              >
-                <div className="w-10 h-10 rounded-xl bg-primary2/15 text-primary2 dark:text-[#c4b5fd] border border-primary2/30 flex items-center justify-center shrink-0">
-                  <ReceiptIndianRupee className="w-5 h-5 stroke-[2]" />
-                </div>
-                <span className="text-[11px] font-extrabold text-ink dark:text-white">Receipt</span>
-              </button>
-
-              {/* Remind */}
-              <button
-                type="button"
-                onClick={handleQuickRemind}
-                className="rounded-tile p-2.5 sm:p-3 glass-panel hover:bg-white dark:hover:bg-[#1c244c] flex flex-col items-center text-center gap-1.5 active:scale-95 transition cursor-pointer border border-white/80 dark:border-white/15"
-              >
-                <div className="w-10 h-10 rounded-xl bg-amber/15 text-amber dark:text-[#fbbf24] border border-amber/30 flex items-center justify-center shrink-0">
-                  <Send className="w-5 h-5 stroke-[2]" />
-                </div>
-                <span className="text-[11px] font-extrabold text-ink dark:text-white">Remind</span>
-              </button>
-            </div>
-
-            {/* 4. Stat Tiles (3 columns): Properties, Tenants, Paid/Clear */}
+            {/* Stat Tiles (3 columns): Properties, Tenants, Paid/Clear */}
             <div className="grid grid-cols-3 gap-2.5 animate-fade-up">
               <StatTile
                 icon={Building2}
